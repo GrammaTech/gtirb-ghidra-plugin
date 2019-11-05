@@ -20,15 +20,11 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.util.*;
 
-import com.google.protobuf.ByteString;
-
 import ghidra.app.util.MemoryBlockUtils;
 import ghidra.app.util.Option;
 import ghidra.app.util.bin.ByteProvider;
-import ghidra.app.util.bin.format.elf.ElfHeader;
 import ghidra.app.util.importer.MessageLog;
 import ghidra.app.util.opinion.AbstractLibrarySupportLoader;
-import ghidra.app.util.opinion.ElfLoaderOptionsFactory;
 import ghidra.app.util.opinion.LoadSpec;
 import ghidra.framework.model.DomainObject;
 import ghidra.program.database.mem.FileBytes;
@@ -44,9 +40,11 @@ import ghidra.util.Msg;
 import ghidra.util.NumericUtilities;
 import ghidra.util.exception.CancelledException;
 import ghidra.util.task.TaskMonitor;
-import proto.ByteMapOuterClass.ByteMap;
-import proto.IROuterClass.IR;
-import proto.ImageByteMapOuterClass.ImageByteMap;
+
+import gtIrbApi.IR;
+import gtIrbApi.Module;
+import gtIrbApi.Section;
+
 
 /**
  * TODO: Provide class-level documentation that describes what this loader does.
@@ -100,85 +98,51 @@ public class gtIrbPluginLoader extends AbstractLibrarySupportLoader {
 			throws CancelledException, IOException {
 
 		setImageBase(program);
-		
-		// TODO: Load the bytes from 'provider' into the 'program'.
-		IR ir = IR.getDefaultInstance();
 		InputStream fileIn = provider.getInputStream(0);
-		
-	    // Read serialized GTIRB data from the specified file.
-        try {
-            ir = IR.parseFrom(fileIn);
-        } catch (Exception e) {
-            //System.err.println("Problem reading file: " + fileName);
-        	Msg.debug(this, "GTIRB Parsing Failed!", e);
+		IR ir = new IR();
+        //long byteOffset = 0;
+        Address loadAddress;
+
+        if (ir.loadFile(fileIn) != true) {
+        	Msg.error(this, "Unable to load GTIRB file");
         	return;
         }
         
-        long byteOffset = 0;
-        Address loadAddress;
-
-        for (proto.ModuleOuterClass.Module m : ir.getModulesList()) {
-
-            // Print the name of each Module.
-            Msg.debug(this, "Module " + m.getName());
-
-            // From module, get imageByteMap
-            //   From imageByteMap, get byteMap
-            //      From byteMap get list of region
-            //         For every region, get data
-            //             from data get byte array
-            int blockNum = 0;
-            ImageByteMap ibm = m.getImageByteMap();
-            ByteMap bm = ibm.getByteMap();
-            List<proto.ByteMapOuterClass.Region> regionList = bm.getRegionsList();
-            Msg.debug(this, "For each region:");
-            for (proto.ByteMapOuterClass.Region r : regionList) {
-                ByteString d = r.getData();
-                Msg.debug(this, " - Found an array.");
-                byte[] byteArray = d.toByteArray();
-                    //char singleChar;
-                    //for(byte b : byteArray) {
-                    //  singleChar = (char) b;
-                    //  Msg.debug(this, singleChar);
-                    //}
-                long length = byteArray.length;
-                String blockName = "Block" + blockNum;
-                loadAddress = program.getImageBase().add(byteOffset);
-                Msg.debug(this, "load array of length" + length);
-                String blockComment = "Block Comment";
-                String blockSource = "GTIRB Loader";
-                InputStream dataInput = new ByteArrayInputStream(byteArray);
-                /*
-                 * public static MemoryBlock createInitializedBlock(
-                 * Program program, 
-                 * boolean isOverlay,
-				 * String name, 
-				 * Address start, 
-				 * InputStream dataInput, 
-				 * long length,
-				 * String comment, 
-				 * String source, 
-				 * boolean r, 
-				 * boolean w, 
-				 * boolean x, 
-				 * MessageLog log,
-				 * Monitor monitor)
-                 */
-                try {
-	                MemoryBlockUtils.createInitializedBlock(program, false, blockName,
-	                		loadAddress, dataInput, length, blockComment, 
-	                		blockSource, true, false, false, log, monitor);
-	            }
-                catch (AddressOverflowException e) {
-                	Msg.debug(this, "!!!! Address Overflow Exception !!!!");
-                	continue;
-                }
-                blockNum++;
-                byteOffset += length;
+        // Handling one module, for the moment.
+        // Have to be specific about this type because java.lang has a "Module"
+        Module module = ir.getModule();
+        ArrayList<Section> sections = module.getSections();
+        String blockComment = "Block Comment";
+        String blockSource = "GTIRB Loader";
+        for (Section s: sections) {
+        	Msg.debug(this, "Section name: " + s.getName());
+        	Msg.debug(this, "Section address: " + s.getAddress());
+        	Msg.debug(this, "Section size: " + s.getSize());
+        	
+        	/*
+        	 * public static MemoryBlock createInitializedBlock(
+        	 * 			Program program, boolean isOverlay, String name, Address start, 
+        	 * 			InputStream dataInput, long length, String comment, String source, 
+        	 * 			boolean r, boolean w, boolean x, MessageLog log, Monitor monitor)
+        	 */
+        	byte[] byteArray = module.getBytes(s.getAddress(), (int)s.getSize());
+        	if (byteArray == null) {
+        		Msg.debug(this, "Skipping " + s.getName() + ", no bytes in ImageByteMap.");
+        		continue;
+        	}
+            loadAddress = program.getImageBase().add(s.getAddress());
+            InputStream dataInput = new ByteArrayInputStream(byteArray);
+        	try {
+        		MemoryBlockUtils.createInitializedBlock(program, false, s.getName(),
+            		loadAddress, dataInput, s.getSize(), blockComment, 
+            		blockSource, true, false, false, log, monitor);
+        	}
+            catch (AddressOverflowException e) {
+            	Msg.debug(this, "!!!! Address Overflow Exception !!!!");
+            	continue;
             }
         }
-
-
+        
 	}
 
 	@Override

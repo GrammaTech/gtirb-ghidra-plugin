@@ -1,62 +1,144 @@
 package gtIrbApi;
 
+import com.google.protobuf.ByteString;
 import java.util.ArrayList;
 import java.util.List;
 
-import ghidra.util.Msg;
-import com.google.protobuf.ByteString;
-
 public class Module {
-	
-	private proto.ModuleOuterClass.Module protoModule;
-	private ImageByteMap imageByteMap;
+
+    private proto.ModuleOuterClass.Module protoModule;
+    private ImageByteMap imageByteMap;
     private ArrayList<Section> sectionList;
-	
-	public Module(proto.ModuleOuterClass.Module protoModule) {
-	    this.protoModule = protoModule;
-	    this.imageByteMap = new ImageByteMap();
-		this.sectionList = new ArrayList<Section>();
-	    Msg.debug(this, "Created GTIRB API module from proto module " + protoModule.getName());
-	}
-	
-	public boolean initializeImageByteMap () {
+    private ArrayList<Symbol> symbolList;
+    private ArrayList<DataObject> dataObjectList;
+    private ArrayList<Block> blockList;
+    private ArrayList<ProxyBlock> proxyBlockList;
 
-        // From module, get imageByteMap
-        //   From imageByteMap, get byteMap
-        //      From byteMap get list of region
-        //         For every region, get data
-        //             from data get byte array
-    	proto.ImageByteMapOuterClass.ImageByteMap ibm = protoModule.getImageByteMap();
-    	proto.ByteMapOuterClass.ByteMap bm = ibm.getByteMap();
-    	List<proto.ByteMapOuterClass.Region> regionList = bm.getRegionsList();
-    	for (proto.ByteMapOuterClass.Region r : regionList) {
-    		long startAddress = r.getAddress();
-    		ByteString d = r.getData();
-    		byte[] byteArray = d.toByteArray();
-    		Region newRange = new Region(startAddress, byteArray);
+    // Set up constants for recognizing file formats
+    public static final int GTIRB_FILE_FORMAT_UNDEFINED =
+            proto.ModuleOuterClass.FileFormat.Format_Undefined_VALUE;
+    public static final int GTIRB_FILE_FORMAT_COFF = proto.ModuleOuterClass.FileFormat.COFF_VALUE;
+    public static final int GTIRB_FILE_FORMAT_ELF = proto.ModuleOuterClass.FileFormat.ELF_VALUE;
+    public static final int GTIRB_FILE_FORMAT_PE = proto.ModuleOuterClass.FileFormat.PE_VALUE;
+    public static final int GTIRB_FILE_FORMAT_IDAPRODB32 =
+            proto.ModuleOuterClass.FileFormat.IdaProDb32_VALUE;
+    public static final int GTIRB_FILE_FORMAT_IDAPRODB64 =
+            proto.ModuleOuterClass.FileFormat.IdaProDb64_VALUE;
+    public static final int GTIRB_FILE_FORMAT_XCOFF = proto.ModuleOuterClass.FileFormat.XCOFF_VALUE;
+    public static final int GTIRB_FILE_FORMAT_MACHO = proto.ModuleOuterClass.FileFormat.MACHO_VALUE;
+    public static final int GTIRB_FILE_FORMAT_RAW = proto.ModuleOuterClass.FileFormat.RAW_VALUE;
+
+    // Set up constants for recognizing instruction set architectures
+    public static final int GTIRB_ISA_UNDEFINED = proto.ModuleOuterClass.ISAID.ISA_Undefined_VALUE;
+    public static final int GTIRB_ISA_IA32 = proto.ModuleOuterClass.ISAID.IA32_VALUE;
+    public static final int GTIRB_ISA_PPC32 = proto.ModuleOuterClass.ISAID.PPC32_VALUE;
+    public static final int GTIRB_ISA_X64 = proto.ModuleOuterClass.ISAID.X64_VALUE;
+    public static final int GTIRB_ISA_ARM = proto.ModuleOuterClass.ISAID.ARM_VALUE;
+    public static final int GTIRB_ISA_UNSUPPORTED =
+            proto.ModuleOuterClass.ISAID.ValidButUnsupported_VALUE;
+
+    public Module(proto.ModuleOuterClass.Module protoModule) {
+        this.protoModule = protoModule;
+        proto.ImageByteMapOuterClass.ImageByteMap protoImageByteMap = protoModule.getImageByteMap();
+        this.imageByteMap = new ImageByteMap(protoImageByteMap);
+        this.sectionList = new ArrayList<Section>();
+        this.symbolList = new ArrayList<Symbol>();
+        this.blockList = new ArrayList<Block>();
+        this.proxyBlockList = new ArrayList<ProxyBlock>();
+        this.dataObjectList = new ArrayList<DataObject>();
+        // System.out.println("Created GTIRB API module from proto module " +
+        // protoModule.getName());
+    }
+
+    public boolean initializeImageByteMap() {
+
+        proto.ImageByteMapOuterClass.ImageByteMap ibm = protoModule.getImageByteMap();
+        proto.ByteMapOuterClass.ByteMap bm = ibm.getByteMap();
+        List<proto.ByteMapOuterClass.Region> regionList = bm.getRegionsList();
+        for (proto.ByteMapOuterClass.Region r : regionList) {
+            long startAddress = r.getAddress();
+            ByteString d = r.getData();
+            byte[] byteArray = d.toByteArray();
+            Region newRange = new Region(startAddress, byteArray);
             imageByteMap.addRegion(newRange);
-    	}
-    	imageByteMap.printImageByteMap();
-        return true;       
-	}
-	
-	public boolean initializeSectionList () {
+        }
+        imageByteMap.printImageByteMap();
+        return true;
+    }
 
-        // Get proto Section list
+    public boolean initializeSectionList() {
+
         // For each section, add to sectionList in this class
-		List<proto.SectionOuterClass.Section> protoSectionList = protoModule.getSectionsList();
-		for (proto.SectionOuterClass.Section protoSection: protoSectionList) {
-			Section newSection = new Section(protoSection);
-			sectionList.add(newSection);			
-		}
-        return true;       
-	}
+        List<proto.SectionOuterClass.Section> protoSectionList = protoModule.getSectionsList();
+        for (proto.SectionOuterClass.Section protoSection : protoSectionList) {
+            Section newSection = new Section(protoSection);
+            sectionList.add(newSection);
+        }
+        return true;
+    }
 
-	public byte[] getBytes(long startAddress, int size) {
-		return imageByteMap.getBytes(startAddress, size);
-	}
+    public boolean initializeSymbolList() {
 
-	public ArrayList<Section> getSections() {
-		return this.sectionList;
-	}
+        // For each symbol, add to symbolList in this class
+        List<proto.SymbolOuterClass.Symbol> protoSymbolList = protoModule.getSymbolsList();
+        for (proto.SymbolOuterClass.Symbol protoSymbol : protoSymbolList) {
+            Symbol newSymbol = new Symbol(protoSymbol);
+            symbolList.add(newSymbol);
+        }
+        return true;
+    }
+
+    public boolean initializeBlockList() {
+
+        // For each block, add to blockList in this class
+        List<proto.BlockOuterClass.Block> protoBlockList = protoModule.getBlocksList();
+        for (proto.BlockOuterClass.Block protoBlock : protoBlockList) {
+            Block newBlock = new Block(protoBlock);
+            blockList.add(newBlock);
+        }
+        return true;
+    }
+
+    public boolean initializeProxyBlockList() {
+
+        // For each block, add to blockList in this class
+        List<proto.ProxyBlockOuterClass.ProxyBlock> protoProxyBlockList =
+                protoModule.getProxiesList();
+        for (proto.ProxyBlockOuterClass.ProxyBlock protoProxyBlock : protoProxyBlockList) {
+            ProxyBlock newProxyBlock = new ProxyBlock(protoProxyBlock);
+            proxyBlockList.add(newProxyBlock);
+        }
+        return true;
+    }
+
+    public boolean initializeDataObjectList() {
+
+        // For each data object, add to dataObjectList in this class
+        List<proto.DataObjectOuterClass.DataObject> protoDataObjectList = protoModule.getDataList();
+        for (proto.DataObjectOuterClass.DataObject protoDataObject : protoDataObjectList) {
+            DataObject newDataObject = new DataObject(protoDataObject);
+            dataObjectList.add(newDataObject);
+        }
+        return true;
+    }
+
+    public byte[] getBytes(long startAddress, int size) {
+        return imageByteMap.getBytes(startAddress, size);
+    }
+
+    public ArrayList<Section> getSections() {
+        return this.sectionList;
+    }
+
+    public ArrayList<Symbol> getSymbols() {
+        return this.symbolList;
+    }
+
+    public int getFileFormat() {
+        return this.protoModule.getFileFormatValue();
+    }
+
+    public int getISA() {
+        return this.protoModule.getIsaIdValue();
+    }
 }

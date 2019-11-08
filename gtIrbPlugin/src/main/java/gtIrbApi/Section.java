@@ -1,41 +1,41 @@
 package gtIrbApi;
 
-import ghidra.util.Msg;
+// import ghidra.util.Msg;
 
 public class Section {
-	private String name;
-	private long address;
-	private long size;
-	
-	public Section(proto.SectionOuterClass.Section protoSection) {
-	    this.setName(protoSection.getName());
-	    this.setAddress(protoSection.getAddress());
-	    this.setSize(protoSection.getSize());
-	    Msg.debug(this, "Created GTIRB API section from proto section " + protoSection.getName());
-	}
+    private String name;
+    private long address;
+    private long size;
 
-	public String getName() {
-		return name;
-	}
+    public Section(proto.SectionOuterClass.Section protoSection) {
+        this.setName(protoSection.getName());
+        this.setAddress(protoSection.getAddress());
+        this.setSize(protoSection.getSize());
+        // System.out.println("Created GTIRB API section from proto section " +
+        // protoSection.getName());
+    }
 
-	public void setName(String name) {
-		this.name = name;
-	}
+    public String getName() {
+        return name;
+    }
 
-	public long getAddress() {
-		return address;
-	}
+    public void setName(String name) {
+        this.name = name;
+    }
 
-	public void setAddress(long address) {
-		this.address = address;
-	}
+    public long getAddress() {
+        return address;
+    }
 
-	public long getSize() {
-		return size;
-	}
+    public void setAddress(long address) {
+        this.address = address;
+    }
 
-	public void setSize(long size) {
-		this.size = size;
-	}
+    public long getSize() {
+        return size;
+    }
 
+    public void setSize(long size) {
+        this.size = size;
+    }
 }

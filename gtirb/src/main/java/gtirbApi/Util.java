@@ -1,5 +1,5 @@
 /** */
-package gtIrbApi;
+package gtirbApi;
 
 import java.nio.ByteBuffer;
 import java.util.UUID;

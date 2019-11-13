@@ -1,4 +1,4 @@
-package gtIrbApi;
+package gtirbApi;
 
 public final class Region {
     private long startAddress;

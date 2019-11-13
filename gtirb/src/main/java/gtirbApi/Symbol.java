@@ -1,5 +1,5 @@
 /** */
-package gtIrbApi;
+package gtirbApi;
 
 import java.util.UUID;
 
@@ -24,12 +24,8 @@ public class Symbol extends Node {
         UUID uuid = Util.byteStringToUuid(protoSymbol.getUuid());
         super.setUuid(uuid);
         super.setKind(Kind.Symbol);
-        // System.out.println("UUID cache size: " + super.getCacheSize());
         this.name = protoSymbol.getName();
         this.referentUuid = Util.byteStringToUuid(protoSymbol.getReferentUuid());
-        // System.out.println("Created GTIRB API symbol from proto symbol " + protoSymbol.getName()
-        // +
-        //		" referent UUID " + this.referentUuid.toString());
     }
 
     public String getName() {

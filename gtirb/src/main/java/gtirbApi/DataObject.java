@@ -1,5 +1,5 @@
 /** */
-package gtIrbApi;
+package gtirbApi;
 
 import java.util.UUID;
 
@@ -10,17 +10,10 @@ public class DataObject extends Node {
 
     public DataObject(proto.DataObjectOuterClass.DataObject protoDataObject) {
         UUID uuid = Util.byteStringToUuid(protoDataObject.getUuid());
-        //    	byte[] uuidByteArray = protoDataObject.getUuid().toByteArray();
-        //    	ByteBuffer bb = ByteBuffer.wrap(uuidByteArray);
-        //    	UUID uuid = new UUID(bb.getLong(), bb.getLong());
         super.setUuid(uuid);
         super.setKind(Kind.DataObject);
         this.address = protoDataObject.getAddress();
         this.size = protoDataObject.getSize();
-        // System.out.println("Created GTIRB API data object from data object at " +
-        // protoDataObject.getAddress() +
-        //		" UUID " + uuid.toString());
-
     }
 
     public long getAddress() {

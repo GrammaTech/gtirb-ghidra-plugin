@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <projectDescription>
-	<name>gtIrbPlugin</name>
+	<name>gtirb</name>
 	<comment></comment>
 	<projects>
 	</projects>
@@ -15,16 +15,22 @@
 			<arguments>
 			</arguments>
 		</buildCommand>
+		<buildCommand>
+			<name>org.python.pydev.PyDevBuilder</name>
+			<arguments>
+			</arguments>
+		</buildCommand>
 	</buildSpec>
 	<natures>
 		<nature>org.eclipse.jdt.core.javanature</nature>
 		<nature>org.eclipse.buildship.core.gradleprojectnature</nature>
+		<nature>org.python.pydev.pythonNature</nature>
 	</natures>
 	<linkedResources>
 		<link>
 			<name>Ghidra</name>
 			<type>2</type>
-			<location>/home/tneale/mywork/ghidra/install/ghidra_9.1-BETA_DEV</location>
+			<location>/home/tneale/mywork/ghidra/install/ghidra_9.1_PUBLIC</location>
 		</link>
 	</linkedResources>
 </projectDescription>

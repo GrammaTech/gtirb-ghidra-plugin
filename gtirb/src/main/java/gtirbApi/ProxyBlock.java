@@ -1,5 +1,5 @@
 /** */
-package gtIrbApi;
+package gtirbApi;
 
 import java.util.UUID;
 
@@ -10,6 +10,5 @@ public class ProxyBlock extends Node {
         UUID uuid = Util.byteStringToUuid(protoProxyBlock.getUuid());
         super.setUuid(uuid);
         super.setKind(Kind.ProxyBlock);
-        // System.out.println("Created GTIRB API proxy block from proxy block");
     }
 }

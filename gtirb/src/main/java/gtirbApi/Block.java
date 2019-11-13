@@ -1,5 +1,5 @@
 /** */
-package gtIrbApi;
+package gtirbApi;
 
 import java.util.UUID;
 
@@ -16,9 +16,6 @@ public class Block extends Node {
         this.address = protoBlock.getAddress();
         this.size = protoBlock.getSize();
         this.decodeMode = protoBlock.getDecodeMode();
-        // System.out.println("Created GTIRB API block from block at " + protoBlock.getAddress() +
-        //		" UUID " + uuid.toString());
-
     }
 
     public long getAddress() {

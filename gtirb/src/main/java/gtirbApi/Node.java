@@ -1,5 +1,5 @@
 /** */
-package gtIrbApi;
+package gtirbApi;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -18,12 +18,10 @@ public class Node {
     }
 
     public Node getByUuid(UUID uuid) {
-        // System.out.println("Getting UUID from uuid_cache: " + uuid.toString());
         return uuid_cache.get(uuid);
     }
 
     public Node setUuid(UUID uuid) {
-        // System.out.println("Adding UUID to uuid_cache: " + uuid.toString());
         return uuid_cache.put(uuid, this);
     }
 

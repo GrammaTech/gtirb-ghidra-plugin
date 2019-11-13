@@ -1,4 +1,4 @@
-package gtIrbApi;
+package gtirbApi;
 
 import com.google.protobuf.ByteString;
 import java.util.ArrayList;
@@ -46,8 +46,6 @@ public class Module {
         this.blockList = new ArrayList<Block>();
         this.proxyBlockList = new ArrayList<ProxyBlock>();
         this.dataObjectList = new ArrayList<DataObject>();
-        // System.out.println("Created GTIRB API module from proto module " +
-        // protoModule.getName());
     }
 
     public boolean initializeImageByteMap() {
@@ -62,7 +60,6 @@ public class Module {
             Region newRange = new Region(startAddress, byteArray);
             imageByteMap.addRegion(newRange);
         }
-        imageByteMap.printImageByteMap();
         return true;
     }
 

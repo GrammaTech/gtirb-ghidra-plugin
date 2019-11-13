@@ -1,4 +1,4 @@
-package gtIrbApi;
+package gtirbApi;
 
 // import ghidra.util.Msg;
 
@@ -11,8 +11,6 @@ public class Section {
         this.setName(protoSection.getName());
         this.setAddress(protoSection.getAddress());
         this.setSize(protoSection.getSize());
-        // System.out.println("Created GTIRB API section from proto section " +
-        // protoSection.getName());
     }
 
     public String getName() {

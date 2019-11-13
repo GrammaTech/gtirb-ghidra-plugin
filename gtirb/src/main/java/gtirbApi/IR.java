@@ -1,4 +1,4 @@
-package gtIrbApi;
+package gtirbApi;
 
 import java.io.FileNotFoundException;
 import java.io.IOException;
@@ -21,10 +21,10 @@ public class IR {
         try {
             this.protoIR = proto.IROuterClass.IR.parseFrom(fileIn);
         } catch (FileNotFoundException fe) {
-            Msg.error(this, "File not found");
+            // Msg.error(this, "File not found");
             return false;
         } catch (IOException ie) {
-            Msg.error(this, "Problem reading file");
+            // Msg.error(this, "Problem reading file");
             return false;
         }
 
@@ -32,32 +32,32 @@ public class IR {
         proto.ModuleOuterClass.Module m = protoIR.getModulesList().get(0);
         this.module = new Module(m);
         if (module.initializeImageByteMap() != true) {
-            Msg.error(this, "Error initializing ImageByteMap");
+            // Msg.error(this, "Error initializing ImageByteMap");
             return false;
         }
 
         if (module.initializeSectionList() != true) {
-            Msg.error(this, "Error initializing Section list");
+            // Msg.error(this, "Error initializing Section list");
             return false;
         }
 
         if (module.initializeSymbolList() != true) {
-            Msg.error(this, "Error initializing Symbol list");
+            // Msg.error(this, "Error initializing Symbol list");
             return false;
         }
 
         if (module.initializeBlockList() != true) {
-            Msg.error(this, "Error initializing Block list");
+            // Msg.error(this, "Error initializing Block list");
             return false;
         }
 
         if (module.initializeProxyBlockList() != true) {
-            Msg.error(this, "Error initializing Proxy Block list");
+            // Msg.error(this, "Error initializing Proxy Block list");
             return false;
         }
 
         if (module.initializeDataObjectList() != true) {
-            Msg.error(this, "Error initializing Data Object list");
+            // Msg.error(this, "Error initializing Data Object list");
             return false;
         }
 

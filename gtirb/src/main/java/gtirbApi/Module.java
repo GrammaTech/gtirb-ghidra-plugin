@@ -127,29 +127,23 @@ public class Module {
         proto.AuxDataContainerOuterClass.AuxDataContainer auxDataContainer =
                 protoModule.getAuxDataContainer();
         if (auxDataContainer == null) {
-            System.out.println("AuxDataContainer is null");
             return false;
         }
         this.auxData = new AuxData(auxDataContainer);
 
         Map<String, proto.AuxDataOuterClass.AuxData> auxDataMap = auxDataContainer.getAuxDataMap();
         if (auxDataMap == null) {
-            System.out.println("AuxDataMap is null");
             return false;
         }
         proto.AuxDataOuterClass.AuxData protoFunctionEntries = auxDataMap.get("functionEntries");
-        if (protoFunctionEntries == null) {
-            System.out.println("protoFunctionEntries is null");
-            return false;
+        if (protoFunctionEntries != null) {
+            auxData.initializeFunctionEntries(protoFunctionEntries);
         }
-        auxData.initializeFunctionEntries(protoFunctionEntries);
 
         proto.AuxDataOuterClass.AuxData protoFunctionBlocks = auxDataMap.get("functionBlocks");
-        if (protoFunctionBlocks == null) {
-            System.out.println("protoFunctionBlocks is null");
-            return false;
+        if (protoFunctionBlocks != null) {
+            auxData.initializeFunctionBlocks(protoFunctionBlocks);
         }
-        auxData.initializeFunctionBlocks(protoFunctionBlocks);
 
         return true;
     }

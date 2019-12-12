@@ -19,11 +19,8 @@ public class AuxData {
     }
 
     public boolean initializeFunctionEntries(proto.AuxDataOuterClass.AuxData protoAuxData) {
-        // this.protoAuxData = protoAuxData;
-        System.out.println("AuxData Type Name " + protoAuxData.getTypeName());
         Serialization serialization = new Serialization(protoAuxData.getData().toByteArray());
         int numFunctionEntries = serialization.getSize();
-        System.out.println("Number of function point sets: " + numFunctionEntries);
 
         int numEntryPoints;
         UUID functionUuid;
@@ -46,11 +43,8 @@ public class AuxData {
     }
 
     public boolean initializeFunctionBlocks(proto.AuxDataOuterClass.AuxData protoAuxData) {
-        // this.protoAuxData = protoAuxData;
-        System.out.println("AuxData Type Name " + protoAuxData.getTypeName());
         Serialization serialization = new Serialization(protoAuxData.getData().toByteArray());
         int numFunctions = serialization.getSize();
-        System.out.println("Number of function block sets: " + numFunctions);
 
         int numBlocks;
         UUID functionUuid;

@@ -4,8 +4,6 @@ import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
 
-// import ghidra.util.Msg;
-
 public class IR {
 
     private proto.IROuterClass.IR protoIR;
@@ -21,10 +19,8 @@ public class IR {
         try {
             this.protoIR = proto.IROuterClass.IR.parseFrom(fileIn);
         } catch (FileNotFoundException fe) {
-            // Msg.error(this, "File not found");
             return false;
         } catch (IOException ie) {
-            // Msg.error(this, "Problem reading file");
             return false;
         }
 

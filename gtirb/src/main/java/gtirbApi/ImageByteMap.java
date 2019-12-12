@@ -4,8 +4,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
-// import ghidra.util.Msg;
-
 public final class ImageByteMap extends Node {
 
     private List<Region> regionList;
@@ -24,7 +22,6 @@ public final class ImageByteMap extends Node {
 
         // Check that the range is valid
         if ((region.getStartAddress() < 0) || (region.getLength() == 0)) {
-            // Msg.error(this, "addRegion: invalid range");
             return false;
         }
 
@@ -33,7 +30,6 @@ public final class ImageByteMap extends Node {
             this.minAddress = region.getStartAddress();
             this.maxAddress = this.minAddress + region.getLength() - 1;
             this.regionList.add(region);
-            // Msg.debug(this, "Added first region to list.");
             return true;
         }
 
@@ -55,13 +51,11 @@ public final class ImageByteMap extends Node {
             Region belowRange = this.regionList.get(belowPosition);
             if ((belowRange.getStartAddress() + belowRange.getLength())
                     > region.getStartAddress()) {
-                // Msg.error(this, "addRegion: overlapping regions not permitted");
                 return false;
             }
             // If regions are contiguous, combine them
             if ((belowRange.getStartAddress() + belowRange.getLength())
                     == region.getStartAddress()) {
-                // Msg.debug(this, "addRegion: coelescing regions");
                 byte[] replacement = new byte[belowRange.getLength() + region.getLength()];
                 System.arraycopy(belowRange.getBytes(), 0, replacement, 0, belowRange.getLength());
                 System.arraycopy(
@@ -80,12 +74,10 @@ public final class ImageByteMap extends Node {
             int abovePosition = insertPosition + 1;
             Region aboveRange = this.regionList.get(abovePosition);
             if ((region.getStartAddress() + region.getLength()) > aboveRange.getStartAddress()) {
-                // Msg.error(this, "addRegion: overlapping regions not permitted");
                 return false;
             }
             // If regions are contiguous, combine them
             if ((region.getStartAddress() + region.getLength()) == aboveRange.getStartAddress()) {
-                // Msg.debug(this, "addRegion: coelescing regions");
                 byte[] replacement = new byte[region.getLength() + aboveRange.getLength()];
                 System.arraycopy(region.getBytes(), 0, replacement, 0, region.getLength());
                 System.arraycopy(

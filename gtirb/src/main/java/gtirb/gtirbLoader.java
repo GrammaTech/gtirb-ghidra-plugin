@@ -133,11 +133,13 @@ public class gtirbLoader extends AbstractLibrarySupportLoader {
 
     private gtirbFunction getFunctionContainingAddress(long address) {
         for (Map.Entry<String, gtirbFunction> entry : functionMap.entrySet()) {
-            String functionName = entry.getKey();
             gtirbFunction function = entry.getValue();
             long start = function.getAddress();
-            long end = start + function.getSize();
-            if ((address >= start) && (address < end)) {
+            long end =
+                    start
+                            + function.getSize()
+                            + 8; // Add one because address ranges are inclusive (add sizeof(long))
+            if ((address >= start) && (address <= end)) {
                 return function;
             }
         }
@@ -145,10 +147,19 @@ public class gtirbLoader extends AbstractLibrarySupportLoader {
     }
 
     private void setImageBase(Program program) {
+        //
+        // TODO: Work with load address:
+        // GTIRB modules have preferred load address and rebase delta but always are 0.
+        // ELF loader has a configuration option with default value of 0x10000
+        // This involves creating a new class like "ElfLoaderOptionsFactory".
+        // I should use GTIRB load address, and if that is 0 use a load option like ELF.
+        // Until I do that I am hardcoding a load address of 0x100000.
+        long defaultLoadAddress = 0x100000;
         try {
             AddressSpace defaultSpace = program.getAddressFactory().getDefaultAddressSpace();
             // If I knew of a different image base, I would set it here instead of using "0"
-            Address imageBase = defaultSpace.getAddress(0, true);
+            // Address imageBase = defaultSpace.getAddress(0, true);
+            Address imageBase = defaultSpace.getAddress(defaultLoadAddress, true);
             program.setImageBase(imageBase, true);
         } catch (Exception e) {
             // this shouldn't happen
@@ -194,22 +205,6 @@ public class gtirbLoader extends AbstractLibrarySupportLoader {
     }
 
     public boolean addSymbol(Symbol symbol, Address address, Program program, Namespace namespace) {
-        // Namespace namespace;
-        // if (symbol.getStorageKind() == Symbol.GTIRB_STORAGE_LOCAL) {
-        //	namespace = this.storageLocal;
-        // }
-        // else if (symbol.getStorageKind() == Symbol.GTIRB_STORAGE_EXTERN) {
-        //	namespace = this.storageExtern;
-        // }
-        // else if (symbol.getStorageKind() == Symbol.GTIRB_STORAGE_STATIC) {
-        //	namespace = this.storageStatic;
-        // }
-        // else if (symbol.getStorageKind() == Symbol.GTIRB_STORAGE_NORMAL) {
-        //	namespace = null;
-        // }
-        // else
-        //	namespace = this.storageUndefined;
-        // Namespace namespace = this.namespaceMap.get("Storage_Normal");
         String name = symbol.getName();
         SymbolTable symbolTable = program.getSymbolTable();
         try {
@@ -349,12 +344,13 @@ public class gtirbLoader extends AbstractLibrarySupportLoader {
         //
         // Process section information
         // Iterate through the IR section tables, loading each section into program memory
-        // TODO: Some sections should be loaded as overlays, this is ignoered at the moment
+        // TODO: Some sections should be loaded as overlays, this is ignored at the moment
+        //       All GTIRB sections have an address, I'm not sure implementing overlays
+        //       as in ELF is really called for. Just load the sections as they are.
         // TODO: Block comment and source should be a little more useful.
         //
         monitor.setMessage("Processing program sections...");
         ArrayList<Section> sections = module.getSections();
-        String blockComment = "Block Comment";
         String blockSource = "GTIRB Loader";
         Address loadAddress;
         for (Section s : sections) {
@@ -365,9 +361,7 @@ public class gtirbLoader extends AbstractLibrarySupportLoader {
             }
             loadAddress = program.getImageBase().add(s.getAddress());
             InputStream dataInput = new ByteArrayInputStream(byteArray);
-
-            //
-            // TODO: Actually some of these _should_ be overlay
+            String blockComment = "";
             try {
                 MemoryBlockUtils.createInitializedBlock(
                         program,
@@ -384,8 +378,8 @@ public class gtirbLoader extends AbstractLibrarySupportLoader {
                         log,
                         monitor);
             } catch (AddressOverflowException e) {
-                Msg.error(this, "!!!! Address Overflow Exception !!!!");
-                continue;
+                Msg.error(this, "Address Overflow Exception.");
+                return;
             }
         }
 
@@ -417,7 +411,7 @@ public class gtirbLoader extends AbstractLibrarySupportLoader {
         // or code referent.
         // OR, maybe I should actually be looking at the .symtab section? At least there all the
         // symbols
-        // have an address. (Buut what if not ELF or otherwise no .symtab?)
+        // have an address. (But what if not ELF or otherwise no .symtab?)
         monitor.setMessage("Initializing symbol table...");
         ArrayList<Symbol> symbols = module.getSymbols();
         for (Symbol symbol : symbols) {
@@ -436,11 +430,9 @@ public class gtirbLoader extends AbstractLibrarySupportLoader {
             }
             Node referent = symbol.getByUuid(referentUuid);
             if (referent == null) {
-                // Msg.debug(this, "  - has an unregistered referent.");
                 continue;
             } else if (referent.getKind() == Kind.Block) {
                 Block block = (Block) referent;
-                // Msg.debug(this, "  - Block Address " + block.getAddress());
                 if (symbol.getStorageKind() == Symbol.GTIRB_STORAGE_LOCAL) {
 
                     // Symbol is local to a function what function?
@@ -482,22 +474,14 @@ public class gtirbLoader extends AbstractLibrarySupportLoader {
                 }
             } else if (referent.getKind() == Kind.DataObject) {
                 DataObject dataObject = (DataObject) referent;
-                // Msg.debug(this, "  - Data Object Address " + dataObject.getAddress());
                 Address symbolAddress = program.getImageBase().add(dataObject.getAddress());
                 addSymbol(symbol, symbolAddress, program, null);
             } else if (referent.getKind() == Kind.Block) {
                 Block block = (Block) referent;
-                // Msg.debug(this, "  - Block Address " + block.getAddress());
                 Address symbolAddress = program.getImageBase().add(block.getAddress());
                 addSymbol(symbol, symbolAddress, program, null);
-            } else if (referent.getKind() == Kind.ProxyBlock) {
-                // Msg.debug(this, "  - Proxy Block");
-                ;
+            } else if (referent.getKind() == Kind.ProxyBlock) {;
             }
-
-            // else {
-            //	//Msg.debug(this, "  - Unrecognized referent.");
-            // }
         }
 
         //

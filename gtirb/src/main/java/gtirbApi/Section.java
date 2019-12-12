@@ -1,7 +1,5 @@
 package gtirbApi;
 
-// import ghidra.util.Msg;
-
 public class Section {
     private String name;
     private long address;

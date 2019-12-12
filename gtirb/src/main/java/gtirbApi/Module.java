@@ -124,35 +124,36 @@ public class Module {
     }
 
     public boolean initializeAuxData() {
-    	proto.AuxDataContainerOuterClass.AuxDataContainer auxDataContainer = protoModule.getAuxDataContainer();
-    	if (auxDataContainer == null) {
-    		System.out.println ("AuxDataContainer is null");
-    		return false;
-    	}
-    	this.auxData = new AuxData(auxDataContainer);
-    	
-    	Map<String, proto.AuxDataOuterClass.AuxData> auxDataMap = auxDataContainer.getAuxDataMap();
-    	if (auxDataMap == null) {
-    		System.out.println ("AuxDataMap is null");
-    		return false;
-    	}
-    	proto.AuxDataOuterClass.AuxData protoFunctionEntries = auxDataMap.get("functionEntries");
-    	if (protoFunctionEntries == null) {
-    		System.out.println ("protoFunctionEntries is null");
-    		return false;
-    	}
-    	auxData.initializeFunctionEntries(protoFunctionEntries);
+        proto.AuxDataContainerOuterClass.AuxDataContainer auxDataContainer =
+                protoModule.getAuxDataContainer();
+        if (auxDataContainer == null) {
+            System.out.println("AuxDataContainer is null");
+            return false;
+        }
+        this.auxData = new AuxData(auxDataContainer);
 
-    	proto.AuxDataOuterClass.AuxData protoFunctionBlocks = auxDataMap.get("functionBlocks");
-    	if (protoFunctionBlocks == null) {
-    		System.out.println ("protoFunctionBlocks is null");
-    		return false;
-    	}
-    	auxData.initializeFunctionBlocks(protoFunctionBlocks);
+        Map<String, proto.AuxDataOuterClass.AuxData> auxDataMap = auxDataContainer.getAuxDataMap();
+        if (auxDataMap == null) {
+            System.out.println("AuxDataMap is null");
+            return false;
+        }
+        proto.AuxDataOuterClass.AuxData protoFunctionEntries = auxDataMap.get("functionEntries");
+        if (protoFunctionEntries == null) {
+            System.out.println("protoFunctionEntries is null");
+            return false;
+        }
+        auxData.initializeFunctionEntries(protoFunctionEntries);
 
-    	return true;
+        proto.AuxDataOuterClass.AuxData protoFunctionBlocks = auxDataMap.get("functionBlocks");
+        if (protoFunctionBlocks == null) {
+            System.out.println("protoFunctionBlocks is null");
+            return false;
+        }
+        auxData.initializeFunctionBlocks(protoFunctionBlocks);
+
+        return true;
     }
-    
+
     public byte[] getBytes(long startAddress, int size) {
         return imageByteMap.getBytes(startAddress, size);
     }
@@ -171,18 +172,17 @@ public class Module {
 
     public int getISA() {
         return this.protoModule.getIsaIdValue();
-     
     }
-    
-    public ArrayList<Block> getBlockList () {
-    	return this.blockList;
-	}
-    
-    public String getName () {
-    	return this.name;
+
+    public ArrayList<Block> getBlockList() {
+        return this.blockList;
     }
-    
-    public AuxData getAuxData () {
-    	return this.auxData;
+
+    public String getName() {
+        return this.name;
+    }
+
+    public AuxData getAuxData() {
+        return this.auxData;
     }
 }

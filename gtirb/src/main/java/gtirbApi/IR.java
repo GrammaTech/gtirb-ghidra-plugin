@@ -4,7 +4,7 @@ import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
 
-//import ghidra.util.Msg;
+// import ghidra.util.Msg;
 
 public class IR {
 
@@ -21,17 +21,17 @@ public class IR {
         try {
             this.protoIR = proto.IROuterClass.IR.parseFrom(fileIn);
         } catch (FileNotFoundException fe) {
-            //Msg.error(this, "File not found");
+            // Msg.error(this, "File not found");
             return false;
         } catch (IOException ie) {
-            //Msg.error(this, "Problem reading file");
+            // Msg.error(this, "Problem reading file");
             return false;
         }
 
         // Create a GTIRB API Module from the first protobuf Module
         proto.ModuleOuterClass.Module m = protoIR.getModulesList().get(0);
         if (m == null) {
-        	// no modules?
+            // no modules?
             return false;
         }
 
@@ -44,10 +44,13 @@ public class IR {
         boolean dataObjectListInitialized = module.initializeDataObjectList();
         boolean auxDataInitialized = module.initializeAuxData();
 
-        if ((!imageByteMapInitialized) || (!sectionListInitialized) ||
-			(!symbolListInitialized) || (!blockListInitialized) ||
-			(!proxyBlockListInitialized) || (!dataObjectListInitialized) ||
-			(!auxDataInitialized)) {
+        if ((!imageByteMapInitialized)
+                || (!sectionListInitialized)
+                || (!symbolListInitialized)
+                || (!blockListInitialized)
+                || (!proxyBlockListInitialized)
+                || (!dataObjectListInitialized)
+                || (!auxDataInitialized)) {
             return false;
         }
         return true;

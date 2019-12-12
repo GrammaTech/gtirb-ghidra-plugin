@@ -4,7 +4,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
-//import ghidra.util.Msg;
+// import ghidra.util.Msg;
 
 public final class ImageByteMap extends Node {
 
@@ -24,7 +24,7 @@ public final class ImageByteMap extends Node {
 
         // Check that the range is valid
         if ((region.getStartAddress() < 0) || (region.getLength() == 0)) {
-            //Msg.error(this, "addRegion: invalid range");
+            // Msg.error(this, "addRegion: invalid range");
             return false;
         }
 
@@ -33,7 +33,7 @@ public final class ImageByteMap extends Node {
             this.minAddress = region.getStartAddress();
             this.maxAddress = this.minAddress + region.getLength() - 1;
             this.regionList.add(region);
-            //Msg.debug(this, "Added first region to list.");
+            // Msg.debug(this, "Added first region to list.");
             return true;
         }
 
@@ -49,23 +49,27 @@ public final class ImageByteMap extends Node {
             insertPosition = this.regionList.size();
         }
 
-
         // If insert position is not "first", check for overlap with preceding Range
         if (insertPosition > 0) {
             int belowPosition = insertPosition - 1;
             Region belowRange = this.regionList.get(belowPosition);
             if ((belowRange.getStartAddress() + belowRange.getLength())
                     > region.getStartAddress()) {
-                //Msg.error(this, "addRegion: overlapping regions not permitted");
+                // Msg.error(this, "addRegion: overlapping regions not permitted");
                 return false;
             }
             // If regions are contiguous, combine them
             if ((belowRange.getStartAddress() + belowRange.getLength())
                     == region.getStartAddress()) {
-                //Msg.debug(this, "addRegion: coelescing regions");
+                // Msg.debug(this, "addRegion: coelescing regions");
                 byte[] replacement = new byte[belowRange.getLength() + region.getLength()];
-        		System.arraycopy(belowRange.getBytes(), 0, replacement, 0, belowRange.getLength());
-        		System.arraycopy(region.getBytes(), 0, replacement, belowRange.getLength(), region.getLength());
+                System.arraycopy(belowRange.getBytes(), 0, replacement, 0, belowRange.getLength());
+                System.arraycopy(
+                        region.getBytes(),
+                        0,
+                        replacement,
+                        belowRange.getLength(),
+                        region.getLength());
                 Region replacementRange = new Region(belowRange.getStartAddress(), replacement);
                 this.regionList.set(this.regionList.indexOf(belowRange), replacementRange);
             }
@@ -76,15 +80,20 @@ public final class ImageByteMap extends Node {
             int abovePosition = insertPosition + 1;
             Region aboveRange = this.regionList.get(abovePosition);
             if ((region.getStartAddress() + region.getLength()) > aboveRange.getStartAddress()) {
-                //Msg.error(this, "addRegion: overlapping regions not permitted");
+                // Msg.error(this, "addRegion: overlapping regions not permitted");
                 return false;
             }
             // If regions are contiguous, combine them
             if ((region.getStartAddress() + region.getLength()) == aboveRange.getStartAddress()) {
-                //Msg.debug(this, "addRegion: coelescing regions");
+                // Msg.debug(this, "addRegion: coelescing regions");
                 byte[] replacement = new byte[region.getLength() + aboveRange.getLength()];
-        		System.arraycopy(region.getBytes(), 0, replacement, 0, region.getLength());
-        		System.arraycopy(aboveRange.getBytes(), 0, replacement, region.getLength(), aboveRange.getLength());
+                System.arraycopy(region.getBytes(), 0, replacement, 0, region.getLength());
+                System.arraycopy(
+                        aboveRange.getBytes(),
+                        0,
+                        replacement,
+                        region.getLength(),
+                        aboveRange.getLength());
                 Region replacementRange = new Region(aboveRange.getStartAddress(), replacement);
                 this.regionList.set(this.regionList.indexOf(aboveRange), replacementRange);
             }

@@ -41,9 +41,8 @@ public class Symbol extends Node {
     public UUID getReferentUuid() {
         return referentUuid;
     }
-    
+
     public int getStorageKind() {
-    	return storageKind;
+        return storageKind;
     }
-    
 }

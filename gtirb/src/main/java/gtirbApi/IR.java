@@ -4,7 +4,7 @@ import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
 
-// import ghidra.util.Msg;
+//import ghidra.util.Msg;
 
 public class IR {
 
@@ -21,46 +21,35 @@ public class IR {
         try {
             this.protoIR = proto.IROuterClass.IR.parseFrom(fileIn);
         } catch (FileNotFoundException fe) {
-            // Msg.error(this, "File not found");
+            //Msg.error(this, "File not found");
             return false;
         } catch (IOException ie) {
-            // Msg.error(this, "Problem reading file");
+            //Msg.error(this, "Problem reading file");
             return false;
         }
 
         // Create a GTIRB API Module from the first protobuf Module
         proto.ModuleOuterClass.Module m = protoIR.getModulesList().get(0);
+        if (m == null) {
+        	// no modules?
+            return false;
+        }
+
         this.module = new Module(m);
-        if (module.initializeImageByteMap() != true) {
-            // Msg.error(this, "Error initializing ImageByteMap");
+        boolean imageByteMapInitialized = module.initializeImageByteMap();
+        boolean sectionListInitialized = module.initializeSectionList();
+        boolean symbolListInitialized = module.initializeSymbolList();
+        boolean blockListInitialized = module.initializeBlockList();
+        boolean proxyBlockListInitialized = module.initializeProxyBlockList();
+        boolean dataObjectListInitialized = module.initializeDataObjectList();
+        boolean auxDataInitialized = module.initializeAuxData();
+
+        if ((!imageByteMapInitialized) || (!sectionListInitialized) ||
+			(!symbolListInitialized) || (!blockListInitialized) ||
+			(!proxyBlockListInitialized) || (!dataObjectListInitialized) ||
+			(!auxDataInitialized)) {
             return false;
         }
-
-        if (module.initializeSectionList() != true) {
-            // Msg.error(this, "Error initializing Section list");
-            return false;
-        }
-
-        if (module.initializeSymbolList() != true) {
-            // Msg.error(this, "Error initializing Symbol list");
-            return false;
-        }
-
-        if (module.initializeBlockList() != true) {
-            // Msg.error(this, "Error initializing Block list");
-            return false;
-        }
-
-        if (module.initializeProxyBlockList() != true) {
-            // Msg.error(this, "Error initializing Proxy Block list");
-            return false;
-        }
-
-        if (module.initializeDataObjectList() != true) {
-            // Msg.error(this, "Error initializing Data Object list");
-            return false;
-        }
-
         return true;
     }
 

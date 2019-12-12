@@ -7,6 +7,7 @@ import java.util.UUID;
 public class Symbol extends Node {
     private String name;
     private UUID referentUuid;
+    private int storageKind;
 
     public static final int GTIRB_STORAGE_UNDEFINED =
             proto.SymbolOuterClass.StorageKind.Storage_Undefined_VALUE;
@@ -26,6 +27,7 @@ public class Symbol extends Node {
         super.setKind(Kind.Symbol);
         this.name = protoSymbol.getName();
         this.referentUuid = Util.byteStringToUuid(protoSymbol.getReferentUuid());
+        this.storageKind = protoSymbol.getStorageKindValue();
     }
 
     public String getName() {
@@ -39,4 +41,9 @@ public class Symbol extends Node {
     public UUID getReferentUuid() {
         return referentUuid;
     }
+    
+    public int getStorageKind() {
+    	return storageKind;
+    }
+    
 }

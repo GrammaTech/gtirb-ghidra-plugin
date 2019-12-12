@@ -28,9 +28,7 @@ repositories {
 
 dependencies {
 
-    // protobufs need to bundled into the jar
     compile files('lib/protobuf-java-3.0.0.jar')
-    //implementation 'com.google.protobuf:protobuf-java:3.0.0'
 
 }
 

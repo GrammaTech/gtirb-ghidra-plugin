@@ -16,6 +16,7 @@ public class Block extends Node {
         this.address = protoBlock.getAddress();
         this.size = protoBlock.getSize();
         this.decodeMode = protoBlock.getDecodeMode();
+
     }
 
     public long getAddress() {

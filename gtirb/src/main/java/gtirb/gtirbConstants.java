@@ -2,5 +2,6 @@ package gtirb;
 
 public class gtirbConstants {
     /** gtirb File Format extension */
-    public static final String GTIRB_EXTENSION = "gtirb";
+    public final static String  GTIRB_EXTENSION         =  "gtirb";
+
 }

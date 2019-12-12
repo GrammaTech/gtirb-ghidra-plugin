@@ -3,6 +3,7 @@ package gtirbApi;
 import com.google.protobuf.ByteString;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 public class Module {
 
@@ -13,6 +14,8 @@ public class Module {
     private ArrayList<DataObject> dataObjectList;
     private ArrayList<Block> blockList;
     private ArrayList<ProxyBlock> proxyBlockList;
+    private AuxData auxData;
+    private String name;
 
     // Set up constants for recognizing file formats
     public static final int GTIRB_FILE_FORMAT_UNDEFINED =
@@ -46,6 +49,7 @@ public class Module {
         this.blockList = new ArrayList<Block>();
         this.proxyBlockList = new ArrayList<ProxyBlock>();
         this.dataObjectList = new ArrayList<DataObject>();
+        this.name = protoModule.getName();
     }
 
     public boolean initializeImageByteMap() {
@@ -98,7 +102,7 @@ public class Module {
 
     public boolean initializeProxyBlockList() {
 
-        // For each block, add to blockList in this class
+        // For each proxy block, add to proxyBlockList in this class
         List<proto.ProxyBlockOuterClass.ProxyBlock> protoProxyBlockList =
                 protoModule.getProxiesList();
         for (proto.ProxyBlockOuterClass.ProxyBlock protoProxyBlock : protoProxyBlockList) {
@@ -119,6 +123,36 @@ public class Module {
         return true;
     }
 
+    public boolean initializeAuxData() {
+    	proto.AuxDataContainerOuterClass.AuxDataContainer auxDataContainer = protoModule.getAuxDataContainer();
+    	if (auxDataContainer == null) {
+    		System.out.println ("AuxDataContainer is null");
+    		return false;
+    	}
+    	this.auxData = new AuxData(auxDataContainer);
+    	
+    	Map<String, proto.AuxDataOuterClass.AuxData> auxDataMap = auxDataContainer.getAuxDataMap();
+    	if (auxDataMap == null) {
+    		System.out.println ("AuxDataMap is null");
+    		return false;
+    	}
+    	proto.AuxDataOuterClass.AuxData protoFunctionEntries = auxDataMap.get("functionEntries");
+    	if (protoFunctionEntries == null) {
+    		System.out.println ("protoFunctionEntries is null");
+    		return false;
+    	}
+    	auxData.initializeFunctionEntries(protoFunctionEntries);
+
+    	proto.AuxDataOuterClass.AuxData protoFunctionBlocks = auxDataMap.get("functionBlocks");
+    	if (protoFunctionBlocks == null) {
+    		System.out.println ("protoFunctionBlocks is null");
+    		return false;
+    	}
+    	auxData.initializeFunctionBlocks(protoFunctionBlocks);
+
+    	return true;
+    }
+    
     public byte[] getBytes(long startAddress, int size) {
         return imageByteMap.getBytes(startAddress, size);
     }
@@ -137,5 +171,18 @@ public class Module {
 
     public int getISA() {
         return this.protoModule.getIsaIdValue();
+     
+    }
+    
+    public ArrayList<Block> getBlockList () {
+    	return this.blockList;
+	}
+    
+    public String getName () {
+    	return this.name;
+    }
+    
+    public AuxData getAuxData () {
+    	return this.auxData;
     }
 }

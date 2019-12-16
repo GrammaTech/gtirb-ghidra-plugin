@@ -11,7 +11,7 @@ Some limitations:
 
 To install the plugin:
  - Install Ghidra 9.1 release (https://ghidra-sre.org/ghidra_9.1_PUBLIC_20191023.zip)
- - Copy dist/ghidra_9.1_PUBLIC_20191113_gtirb.zip in this directory into the Ghidra 9.1 extensions directory (INSTALLDIR/Extensions/Ghidra)
+ - Copy dist/ghidra_9.1_PUBLIC_20191213_gtirb.zip in this directory into the Ghidra 9.1 extensions directory (INSTALLDIR/Extensions/Ghidra)
  - Start ghidra (e.g. INSTALLDIR/ghidraRun)
  - In workspace tool (not code listing), select File - Install Extensions - and select the plugin
  - Restart Ghidra. You can now import gtirb files.

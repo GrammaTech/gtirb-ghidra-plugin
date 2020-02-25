@@ -1,8 +1,23 @@
 package com.grammatech.gtirb_ghidra_plugin;
 
+import com.grammatech.gtirb.Module;
+import com.grammatech.gtirb.Symbol;
 import ghidra.program.model.listing.Program;
+import java.util.UUID;
 
 public class GtirbUtil {
+
+    public static Symbol getSymbolByReferent(Module module, UUID referentUuid) {
+        for (Symbol symbol : module.getSymbols()) {
+            if (symbol.hasReferent()) {
+                UUID symReferentUuid = symbol.getReferentByUuid();
+                if (referentUuid.equals(symReferentUuid)) {
+                    return symbol;
+                }
+            }
+        }
+        return null;
+    }
 
     public static final boolean isGtIrb(Program program) {
         if (program != null) {

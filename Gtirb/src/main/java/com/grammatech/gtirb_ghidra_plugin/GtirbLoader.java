@@ -1,17 +1,15 @@
-/* ###
- * IP: GHIDRA
+/*
+ *  Copyright (C) 2020 GrammaTech, Inc.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
+ *  This code is licensed under the MIT license. See the LICENSE file in the
+ *  project root for license terms.
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *  This project is sponsored by the Office of Naval Research, One Liberty
+ *  Center, 875 N. Randolph Street, Arlington, VA 22203 under contract #
+ *  N68335-17-C-0700.  The content of the information does not necessarily
+ *  reflect the position or policy of the Government and no official
+ *  endorsement should be inferred.
  *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
  */
 package com.grammatech.gtirb_ghidra_plugin;
 
@@ -33,6 +31,7 @@ import com.grammatech.gtirb.Symbol;
 import ghidra.app.util.MemoryBlockUtils;
 import ghidra.app.util.Option;
 import ghidra.app.util.bin.ByteProvider;
+import ghidra.app.util.bin.format.elf.ElfSectionHeaderConstants;
 import ghidra.app.util.importer.MessageLog;
 import ghidra.app.util.opinion.AbstractLibrarySupportLoader;
 import ghidra.app.util.opinion.LoadSpec;
@@ -83,6 +82,11 @@ public class GtirbLoader extends AbstractLibrarySupportLoader {
     private long loadOffset;
     private Namespace storageExtern;
 
+    //
+    // Process an ELF relocation section (section type RELA) according to
+    // the Elf64_Rela structure defined in the ABI relocation chapter.
+    // The parsed information is added to the relocation list for later processing.
+    //
     private boolean getRelocations(Section section) {
         List<ByteInterval> byteIntervals = section.getByteIntervals();
         ByteInterval byteInterval = byteIntervals.get(0);
@@ -97,9 +101,15 @@ public class GtirbLoader extends AbstractLibrarySupportLoader {
         return true;
     }
 
+    //
+    // Get ELF section properties from AuxData.
+    //
+    // This includes information on section type and flags, which is needed to correctly process
+    // the sections.
+    //
     private boolean processElfSectionProperties(Map<UUID, ArrayList<Long>> elfSectionProperties) {
-        int sectionTypeREL = 9;
-        int sectionTypeRELA = 4;
+        // int sectionTypeREL = 9;
+        // int sectionTypeRELA = 4;
         for (Map.Entry<UUID, ArrayList<Long>> entry : elfSectionProperties.entrySet()) {
             UUID sectionUuid = entry.getKey();
             Section section = (Section) Node.getByUuid(sectionUuid);
@@ -109,8 +119,8 @@ public class GtirbLoader extends AbstractLibrarySupportLoader {
             section.setElfSectionType(sectionType.longValue());
             section.setElfSectionFlags(sectionFlags.longValue());
 
-            // Relocation sections: If type is REL or RELA, get the section
-            if (sectionType == sectionTypeREL || sectionType == sectionTypeRELA) {
+            // Relocation sections: Currently only handling RELA, used by X86_64 ELF files.
+            if (sectionType == ElfSectionHeaderConstants.SHT_RELA) {
                 getRelocations(section);
             }
         }
@@ -137,6 +147,9 @@ public class GtirbLoader extends AbstractLibrarySupportLoader {
         return nameString;
     }
 
+    //
+    // Get address information for the byte interval identifed by the given UUID
+    //
     private long getByteIntervalAddress(UUID byteIntervalUuid) {
         Node referent = Node.getByUuid(byteIntervalUuid);
         if (referent == null) return 0;
@@ -159,14 +172,6 @@ public class GtirbLoader extends AbstractLibrarySupportLoader {
                     continue;
                 }
                 if (referentUuid.equals(feBlockUuid)) {
-                    // Msg.debug(this, "Found referrent UUID for " + symbol.getName());
-                    // if (referent instanceof CodeBlock) {
-                    //    // if (referentUuid.equals(feBlockUuid) && referent.getKind() ==
-                    //    // Kind.CodeBlock) {
-                    //    Msg.debug(this, "Found function named " + symbol.getName());
-                    // } else {
-                    //    Msg.debug(this, "But does not match CodeBlock type with instance of!");
-                    // }
                     return symbol.getName();
                 }
             }
@@ -174,7 +179,12 @@ public class GtirbLoader extends AbstractLibrarySupportLoader {
         return ("");
     }
 
+    //
+    // Populate the collection of known functions, including names, address, and sizes.
+    // This will be will be used later when function symbols are resolved.
+    //
     // Depends on gtirbApi Symbols and AuxData, so those must be loaded before calling this.
+    //
     private boolean initializeFunctionMap(Module m) {
         this.functionMap = new HashMap<String, GtirbFunction>();
         String functionName;
@@ -195,15 +205,11 @@ public class GtirbLoader extends AbstractLibrarySupportLoader {
                 continue;
             }
             if (functionMap.containsKey(functionName)) {
-                Msg.error(this, "Duplicate function: " + functionName);
+                Msg.info(this, "Duplicate function: " + functionName);
                 continue;
             }
+
             // Get the code block of this function entry
-            // Node node = new Node();
-            // CodeBlock functionEntryBlock = (CodeBlock) node.getByUuid(feFirstBlockUuid);
-            // if (!(functionEntryBlock instanceof CodeBlock)) {
-            //    Msg.error(this, "Function entry block is not code block (using instanceof)??!!");
-            // }
             CodeBlock functionEntryBlock;
             Node functionEntryNode = Node.getByUuid(feFirstBlockUuid);
             if (functionEntryNode instanceof CodeBlock) {
@@ -217,11 +223,13 @@ public class GtirbLoader extends AbstractLibrarySupportLoader {
             int functionSize = 0;
             CodeBlock functionBlock;
             List<UUID> blockList = functionBlocks.get(feUuid);
-            // grep is crashing?
             if (blockList == null) {
-                Msg.error(this, "\nnull block list?: " + functionName);
+                // This list should not be null. In practice, sometimes it is.
+                // This should be investigated as a possible GTIRB corruption
+                // or serialization problem.
+                // When it happens, use the entries list.
+                Msg.info(this, "No code block list for " + functionName);
                 blockList = functionEntries.get(feUuid);
-                Msg.debug(this, "using felist.");
             }
             for (UUID blockUuid : blockList) {
                 functionBlock = (CodeBlock) Node.getByUuid(blockUuid);
@@ -232,7 +240,7 @@ public class GtirbLoader extends AbstractLibrarySupportLoader {
             if (byteIntervalLoadAddresses.containsKey(byteIntervalUuid)) {
                 byteIntervalLoadAddress = byteIntervalLoadAddresses.get(byteIntervalUuid);
             } else {
-                Msg.error(this, "Unable to get load address for byte interval: " + functionName);
+                Msg.info(this, "Unable to get load address for byte interval: " + functionName);
                 continue;
             }
 
@@ -261,33 +269,30 @@ public class GtirbLoader extends AbstractLibrarySupportLoader {
         try {
             loadAddress = Long.parseLong(imageBaseStr, 16);
         } catch (Exception e) {
-            Msg.error(this, "Unable to use provided value for Image Base " + e);
-            Msg.error(this, "Reverting to default value.");
+            Msg.info(this, "Unable to use provided value for Image Base " + e);
+            Msg.info(this, "Reverting to default value.");
         }
 
         //
-        // IMPORTANT: Have to check that ELF file type is DYN before apply imageBase address!
-        //            If binaryType is EXEC, use the addresses of the byte_intervals as load
-        // addresses.
+        // If binaryType is EXEC, use the addresses of the byte_intervals as load addresses.
+        // so offset needs to be 0.
         //
         if (elfFileType.equals("EXEC")) {
             loadAddress = 0L;
         }
-        // store as loadOffset, because it really is an offset.
         this.loadOffset = loadAddress;
         try {
             AddressSpace defaultSpace = program.getAddressFactory().getDefaultAddressSpace();
             Address imageBase = defaultSpace.getAddress(defaultLoadAddress, true);
             program.setImageBase(imageBase, true);
         } catch (Exception e) {
-            // this shouldn't happen
             Msg.error(this, "Can't set image base.", e);
             return false;
         }
         return true;
     }
 
-    public void markAsCode(Program program, long start, long length) {
+    public void markAsCode(long start, long length) {
         // TODO: this should be in a common place, so all importers can communicate that something
         // is code or data.
         AddressSetPropertyMap codeProp = program.getAddressSetPropertyMap("CodeMap");
@@ -307,11 +312,11 @@ public class GtirbLoader extends AbstractLibrarySupportLoader {
         }
     }
 
-    public boolean addFunction(GtirbFunction function, Program program) {
+    public boolean addFunction(GtirbFunction function) {
         long start = function.getAddress();
         long end = start + function.getSize();
         if (end <= start) {
-            Msg.error(this, "invalid address range: " + function.getName());
+            Msg.info(this, "invalid address range: " + function.getName());
             return false;
         }
         Address imageBase = program.getImageBase();
@@ -322,18 +327,21 @@ public class GtirbLoader extends AbstractLibrarySupportLoader {
             this.listing.createFunction(
                     function.getName(), entryAddress, body, SourceType.IMPORTED);
         } catch (Exception e) {
-            Msg.error(this, "Unable to add function: " + function.getName());
+            Msg.info(this, "Unable to add function: " + function.getName() + " " + e);
             return false;
         }
-        Msg.info(
+        Msg.debug(
                 this,
-                "Added " + function.getName() + " at " + String.format("%08X", (start + 0x100000)));
+                "Added "
+                        + function.getName()
+                        + " at "
+                        + String.format("%08X", (start + 0x100000))
+                        + " to "
+                        + String.format("%08X", (end + 0x100000)));
         return true;
     }
 
-    // public boolean addSymbol(Symbol symbol, Address address, Program program, Namespace
-    // namespace) {
-    public boolean addSymbol(Symbol symbol, long address, Program program, Namespace namespace) {
+    public boolean addSymbol(Symbol symbol, long address, Namespace namespace) {
         Address symbolAddress = program.getImageBase().add(address);
         String name = symbol.getName();
         symbol.setAddress(address);
@@ -341,14 +349,13 @@ public class GtirbLoader extends AbstractLibrarySupportLoader {
         try {
             symbolTable.createLabel(symbolAddress, name, namespace, SourceType.IMPORTED);
         } catch (InvalidInputException e) {
-            Msg.error(this, "addSymbol threw Invalid Input Exception");
+            Msg.info(this, "addSymbol threw Invalid Input Exception " + e);
             return false;
         }
         return true;
     }
 
-    private boolean addSectionBytes(
-            Program program, Section section, MessageLog log, TaskMonitor monitor) {
+    private boolean addSectionBytes(Section section, MessageLog log, TaskMonitor monitor) {
         // If section has multiple byte intervals, use a suffix on the name.
         // Get section flags, and use them on all byte intervals in the section
         // Get address and size, and create a comment using section type
@@ -357,9 +364,10 @@ public class GtirbLoader extends AbstractLibrarySupportLoader {
         int byteIntervalIndex = 0;
         List<ByteInterval> byteIntervals = section.getByteIntervals();
         int elfSectionFlags = (int) section.getElfSectionFlags();
-        boolean isWritable = ((elfSectionFlags & 0x01) == 0x01);
-        boolean isReadable = ((elfSectionFlags & 0x02) == 0x02);
-        boolean isExecutable = ((elfSectionFlags & 0x04) == 0x04);
+        boolean isWritable = ((elfSectionFlags & ElfSectionHeaderConstants.SHF_WRITE) > 0);
+        // boolean isReadable = ((elfSectionFlags & ElfSectionHeaderConstants.SHF_ALLOC) == 0x02);
+        boolean isReadable = true;
+        boolean isExecutable = ((elfSectionFlags & ElfSectionHeaderConstants.SHF_EXECINSTR) > 0);
         int numberOfByteIntervals = byteIntervals.size();
 
         for (ByteInterval byteInterval : byteIntervals) {
@@ -371,10 +379,10 @@ public class GtirbLoader extends AbstractLibrarySupportLoader {
             }
 
             if (!byteInterval.hasAddress()) {
-                Msg.error(
+                Msg.info(
                         this,
                         "Unable to load byteInterval " + byteIntervalName + " (has no address).");
-                return false;
+                continue;
             }
             Long byteIntervalAddress = byteInterval.getAddress();
             long byteIntervalSize = byteInterval.getSize();
@@ -386,7 +394,7 @@ public class GtirbLoader extends AbstractLibrarySupportLoader {
             Address loadAddress = program.getImageBase().add(byteIntervalAddress);
             byte[] byteArray = com.grammatech.gtirb.Util.toByteArray(byteInterval.getBytes());
             if (byteArray == null) {
-                Msg.error(
+                Msg.info(
                         this,
                         "Unable to load byteInterval "
                                 + byteIntervalName
@@ -410,7 +418,7 @@ public class GtirbLoader extends AbstractLibrarySupportLoader {
                         log,
                         monitor);
             } catch (AddressOverflowException e) {
-                Msg.error(this, "Address Overflow Exception.");
+                Msg.error(this, "Address Overflow Exception. " + e);
                 return false;
             }
             this.byteIntervalLoadAddresses.put(byteInterval.getUuid(), byteIntervalAddress);
@@ -424,7 +432,7 @@ public class GtirbLoader extends AbstractLibrarySupportLoader {
         try {
             this.memory.setLong(this.program.getImageBase().add(relocAddr), relocValue);
         } catch (MemoryAccessException e) {
-            Msg.error(this, "Unable to set do relocation " + e);
+            Msg.info(this, "Unable to set do relocation " + e);
             return false;
         }
         return true;
@@ -494,9 +502,11 @@ public class GtirbLoader extends AbstractLibrarySupportLoader {
                             monitor);
         } catch (AddressOverflowException e) {
             Msg.error(this, "Create external memory block failed. " + e);
+            return false;
         }
         if (externalBlock == null) {
             Msg.error(this, "Create external memory block failed.");
+            return false;
         }
 
         for (ElfRelocation elfRelocation : elfRelocations) {
@@ -508,23 +518,18 @@ public class GtirbLoader extends AbstractLibrarySupportLoader {
             // TODO: could verify reloc addr is valid for type and section pointed to
             switch (elfRelocation.getRelocType()) {
                 case R_X86_64_64:
-                    // Set reloc addr to addr of symbol pointed to by relocSym, plus Addend
                     doRelocation(relocAddr, symbolAddr + relocAddend);
                     break;
                 case R_X86_64_COPY:
-                    // Set reloc addr to addr of symbol pointed to by relocSym
                     doRelocation(relocAddr, symbolAddr);
                     break;
                 case R_X86_64_GLOB_DAT:
-                    // Set reloc addr to addr of symbol pointed to by relocSym
                     doRelocation(relocAddr, symbolAddr);
                     break;
                 case R_X86_64_JUMP_SLOT:
-                    // Set reloc addr to addr of symbol pointed to by relocSym
                     doRelocation(relocAddr, symbolAddr);
                     break;
                 case R_X86_64_RELATIVE:
-                    // Set reloc addr to (addend + image base address)
                     doRelocation(relocAddr, relocAddend + this.loadOffset);
                     break;
                 case R_X86_64_NONE:
@@ -562,16 +567,10 @@ public class GtirbLoader extends AbstractLibrarySupportLoader {
                         (edge.isEdgeLabelConditional())
                                 ? RefType.CONDITIONAL_CALL
                                 : RefType.UNCONDITIONAL_CALL;
-            } else if (edge.getEdgeType() == EdgeType.Type_Return) {
-                flowType =
-                        (edge.isEdgeLabelConditional())
-                                ? RefType.CONDITIONAL_CALL_TERMINATOR
-                                : RefType.CALL_TERMINATOR;
             } else if (edge.getEdgeType() == EdgeType.Type_Fallthrough) {
                 flowType = RefType.FALL_THROUGH;
             } else {
-                // Reference type in unknown
-                flowType = RefType.THUNK;
+                continue;
             }
 
             // Now do it.
@@ -587,24 +586,18 @@ public class GtirbLoader extends AbstractLibrarySupportLoader {
         return true;
     }
 
+    // Process symbol information
+    //
+    // A symbol is a label which also has an address, a symbol type and a source type.
+    // This code adds all symbols as type CODE and source IMPORTED. Also the addresses
+    // come from the gtirb referent UUID. See the gtirb data symbols example code.
+    //
     private boolean processSymbols(ArrayList<Symbol> symbols) {
 
-        // Process symbol information
-        //
-        // A symbol is a label which also has an address, a symbol type and a source type.
-        // This code adds all symbols as type CODE and source IMPORTED. Also the addresses
-        // come from the gtirb referent UUID. See the gtirb data symbols example code.
-        //
-        // needs: symbols,
-        //        this.functionMap, this.dynamicSymbols
-        // calls: addSymbol, getByteIntervalAddress
-        //
-        boolean isFakeExternal = false; // not sure if needed?
-        // monitor.setMessage("Initializing symbol table...");
-        // ArrayList<Symbol> symbols = module.getSymbols();
+        boolean isFakeExternal = false;
+
         // Create namespace for external symbols
         SymbolTable symbolTable = program.getSymbolTable();
-        // Namespace storageExtern;
         try {
             this.storageExtern =
                     symbolTable.createNameSpace(null, Library.UNKNOWN, SourceType.IMPORTED);
@@ -618,7 +611,7 @@ public class GtirbLoader extends AbstractLibrarySupportLoader {
             // If this is a function, add it to the program
             if (functionMap.containsKey(symbol.getName())) {
                 GtirbFunction function = functionMap.get(symbol.getName());
-                addFunction(function, program);
+                addFunction(function);
                 continue;
             }
 
@@ -629,7 +622,7 @@ public class GtirbLoader extends AbstractLibrarySupportLoader {
                     if (dynamicSymbol.getName().equals(symbol.getName())) {
                         // Add fakeExternal symbol
                         long symbolOffset = dynamicSymbol.getAddr() - this.loadOffset;
-                        addSymbol(symbol, symbolOffset, program, this.storageExtern);
+                        addSymbol(symbol, symbolOffset, this.storageExtern);
                         isFakeExternal = true;
                         break;
                     }
@@ -642,7 +635,6 @@ public class GtirbLoader extends AbstractLibrarySupportLoader {
                 }
                 continue;
             }
-            // Node referent = symbol.getByUuid(referentUuid);
             Node referent = Node.getByUuid(referentUuid);
             if (referent == null) {
                 continue;
@@ -651,24 +643,24 @@ public class GtirbLoader extends AbstractLibrarySupportLoader {
                 long symbolOffset =
                         getByteIntervalAddress(codeBlock.getByteIntervalUuid())
                                 + codeBlock.getOffset();
-                addSymbol(symbol, symbolOffset, program, null);
+                addSymbol(symbol, symbolOffset, null);
             } else if (referent instanceof DataBlock) {
                 DataBlock dataBlock = (DataBlock) referent;
                 long symbolOffset =
                         getByteIntervalAddress(dataBlock.getByteIntervalUuid())
                                 + dataBlock.getOffset();
-                addSymbol(symbol, symbolOffset, program, null);
+                addSymbol(symbol, symbolOffset, null);
             } else {
                 for (DynamicSymbol dynamicSymbol : this.dynamicSymbols) {
                     if (dynamicSymbol.getName().equals(symbol.getName())) {
                         long symbolOffset = dynamicSymbol.getAddr() - this.loadOffset;
-                        addSymbol(symbol, symbolOffset, program, this.storageExtern);
+                        addSymbol(symbol, symbolOffset, this.storageExtern);
                         isFakeExternal = true;
                         break;
                     }
                 }
                 if (isFakeExternal == false) {
-                    Msg.error(this, "Unable to determine symbol address: " + symbol.getName());
+                    Msg.info(this, "Unable to determine symbol address: " + symbol.getName());
                 }
             }
         }
@@ -774,20 +766,22 @@ public class GtirbLoader extends AbstractLibrarySupportLoader {
         // use.
         //
         if (module.getFileFormat() == Module.FileFormat.ELF) {
-            Msg.debug(this, "File type is ELF.");
+            Msg.info(this, "File type is ELF.");
         } else {
-            Msg.debug(
+            Msg.error(
                     this,
                     "File Format is not ELF (ID = "
                             + module.getFileFormat()
                             + "), so far only ELF is supported");
+            return;
         }
         if (module.getISA() == Module.ISA.X64) {
-            Msg.debug(this, "ISA is X64.");
+            Msg.info(this, "ISA is X64.");
         } else {
-            Msg.debug(
+            Msg.error(
                     this,
                     "ISA is not X64 (ID = " + module.getISA() + "), so far only X86 is supported");
+            return;
         }
 
         //
@@ -800,9 +794,6 @@ public class GtirbLoader extends AbstractLibrarySupportLoader {
         // Either way, store this.loadOffset as the number to use when creating
         // a ghidra address.
         //
-        // setImageBase(program);
-        // long imageBaseAddress = program.getImageBase().getAddressableWordOffset();
-
         String elfFileType = "EXEC";
         ArrayList<String> binaryTypeList = module.getAuxData().getBinaryType();
         if (binaryTypeList != null) {
@@ -814,15 +805,11 @@ public class GtirbLoader extends AbstractLibrarySupportLoader {
             }
         } else {
             Msg.info(this, "Module type defaulting to EXEC");
-            // imageBaseAddress = 0L;
         }
         if (!setImageBase(elfFileType, program)) {
+            // if this fails, no alternative but to exit loader.
             return;
         }
-
-        // both unneeded - loadOffset is set in setImageBase, imageBaseAddress not used.
-        // long imageBaseAddress = program.getImageBase().getAddressableWordOffset();
-        // this.loadOffset = imageBaseAddress;
 
         //
         // Process ELF Sections
@@ -848,9 +835,10 @@ public class GtirbLoader extends AbstractLibrarySupportLoader {
         long maxAddress = 0L;
         this.byteIntervalLoadAddresses = new HashMap<UUID, Long>();
         for (Section section : sections) {
-            boolean retval = addSectionBytes(program, section, log, monitor);
+            boolean retval = addSectionBytes(section, log, monitor);
             if (retval != true) {
                 Msg.error(this, "Section bytes add failed");
+                return;
             }
 
             //
@@ -873,8 +861,8 @@ public class GtirbLoader extends AbstractLibrarySupportLoader {
                 dynStrSectionContents = byteInterval.getBytesDirect();
             }
             // TODO: Must be an enum somewhere for this instead of using literals...
-            if ((section.getElfSectionFlags() & 0x04) > 0)
-                markAsCode(program, byteInterval.getAddress(), byteInterval.getSize());
+            if ((section.getElfSectionFlags() & ElfSectionHeaderConstants.SHF_EXECINSTR) > 0)
+                markAsCode(byteInterval.getAddress(), byteInterval.getSize());
         }
 
         //

@@ -15,3 +15,6 @@ To install the plugin:
  - Start ghidra (e.g. INSTALLDIR/ghidraRun)
  - In workspace tool (not code listing), select File - Install Extensions - and select the plugin
  - Restart Ghidra. You can now import gtirb files.
+
+Demonstration:
+ - We have provided a demonstration video: [ghidra-plugin-intro.mov](ghidra-plugin-intro.mov).

@@ -29,4 +29,4 @@ To install the plugin:
 
 Demonstration:
  - We have provided a demonstration video:
-   [ghidra-plugin-intro.mov](ghidra-plugin-intro.mov).
+   [gtirb-ghidra-plugin-intro.mov](https://grammatech.github.io/gtirb-ghidra-plugin/gtirb-ghidra-plugin-intro.mov).

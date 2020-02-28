@@ -17,10 +17,10 @@ Some limitations:
    specific Ghidra version (9.1).
 
 To install the plugin:
- - Install Ghidra 9.1 release
-   (https://ghidra-sre.org/ghidra_9.1_PUBLIC_20191023.zip)
- - Copy dist/ghidra_9.1_PUBLIC_20191213_gtirb.zip in this directory
-   into the Ghidra 9.1 extensions directory
+ - Install Ghidra 9.1.1 release
+   (https://ghidra-sre.org/ghidra_9.1.1_PUBLIC_20191218.zip)
+ - Copy dist/ghidra_9.1.1_PUBLIC_Gtirb.zip in this directory
+   into the Ghidra 9.1.1 extensions directory
    (INSTALLDIR/Extensions/Ghidra)
  - Start ghidra (e.g., INSTALLDIR/ghidraRun)
  - In workspace tool (not code listing), select File - Install

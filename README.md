@@ -13,14 +13,14 @@ Some limitations:
  - 64 bit little endian only
  - File name must have ".gtirb" suffix (otherwise you will have to
    manually select the GTIRB loader)
- - Plugin is tied to Ghidra version, that is it was created for a
-   specific Ghidra version (9.1).
+ - Plugin is tied to Ghidra version, file name indicates which Ghidra
+   version it is built for.
 
 To install the plugin:
- - Install Ghidra 9.1.1 release
-   (https://ghidra-sre.org/ghidra_9.1.1_PUBLIC_20191218.zip)
- - Copy dist/ghidra_9.1.1_PUBLIC_Gtirb.zip in this directory
-   into the Ghidra 9.1.1 extensions directory
+ - Install Ghidra. Current release is 9.1.2:
+   (https://ghidra-sre.org/ghidra_9.1.2_PUBLIC_20200212.zip)
+ - Copy dist/ghidra_9.1.2_PUBLIC_Gtirb.zip in this directory
+   into the Ghidra 9.1.2 extensions directory
    (INSTALLDIR/Extensions/Ghidra)
  - Start ghidra (e.g., INSTALLDIR/ghidraRun)
  - In workspace tool (not code listing), select File - Install

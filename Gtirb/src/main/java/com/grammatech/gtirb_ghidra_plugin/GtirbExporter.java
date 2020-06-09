@@ -17,8 +17,14 @@ import ghidra.app.util.*;
 import ghidra.app.util.exporter.Exporter;
 import ghidra.app.util.exporter.ExporterException;
 import ghidra.framework.model.DomainObject;
+import ghidra.program.model.address.Address;
+import ghidra.program.model.address.AddressIterator;
+import ghidra.program.model.address.AddressSet;
 import ghidra.program.model.address.AddressSetView;
+import ghidra.program.model.listing.CodeUnit;
+import ghidra.program.model.listing.Listing;
 import ghidra.program.model.listing.Program;
+import ghidra.program.model.mem.Memory;
 import ghidra.util.Msg;
 import ghidra.util.task.TaskMonitor;
 import java.io.File;
@@ -27,16 +33,21 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
+import java.util.UUID;
 
+import com.google.protobuf.ByteString;
 import com.grammatech.gtirb.AuxData;
 import com.grammatech.gtirb.IR;
 import com.grammatech.gtirb.ProxyBlock;
 import com.grammatech.gtirb.Section;
+import com.grammatech.gtirb.Serialization;
 import com.grammatech.gtirb.Symbol;
 import com.grammatech.gtirb.Util;
+import com.grammatech.gtirb.Block;
 import com.grammatech.gtirb.proto.AuxDataOuterClass;
 import com.grammatech.gtirb.proto.CFGOuterClass;
 import com.grammatech.gtirb.proto.IROuterClass;
@@ -58,36 +69,127 @@ public class GtirbExporter extends Exporter {
     }
 
 // // // // // // // // // // // // // // // // //
-    public SectionOuterClass.Section.Builder exportSection(Section section) {
+    private SectionOuterClass.Section.Builder exportSection(Section section) {
     	SectionOuterClass.Section.Builder newSection = SectionOuterClass.Section.newBuilder();
     	SectionOuterClass.Section protoSection = section.getProtoSection();
     	newSection.mergeFrom(protoSection);
     	return (newSection);
     }
     
-    public SymbolOuterClass.Symbol.Builder exportSymbol(Symbol symbol) {
+    private SymbolOuterClass.Symbol.Builder exportSymbol(Symbol symbol) {
     	SymbolOuterClass.Symbol.Builder newSymbol = SymbolOuterClass.Symbol.newBuilder();
     	SymbolOuterClass.Symbol protoSymbol = symbol.getProtoSymbol();
        	newSymbol.mergeFrom(protoSymbol);
        	return newSymbol;
     }
 
-    public ProxyBlockOuterClass.ProxyBlock.Builder exportProxyBlock(ProxyBlock proxyBlock) {
+    private ProxyBlockOuterClass.ProxyBlock.Builder exportProxyBlock(ProxyBlock proxyBlock) {
     	ProxyBlockOuterClass.ProxyBlock.Builder newProxyBlock = ProxyBlockOuterClass.ProxyBlock.newBuilder();
     	ProxyBlockOuterClass.ProxyBlock protoProxyBlock = proxyBlock.getProtoProxyBlock();
        	newProxyBlock.mergeFrom(protoProxyBlock);
        	return newProxyBlock;
     }
 
-    public AuxDataOuterClass.AuxData.Builder exportAuxData(AuxData auxData, String auxDataType) {
+    private AuxDataOuterClass.AuxData.Builder exportComments(AuxData auxData, Program program, com.grammatech.gtirb.Module module) {
     	AuxDataOuterClass.AuxData.Builder newAuxData = AuxDataOuterClass.AuxData.newBuilder();
-    	AuxDataOuterClass.AuxData protoAuxData = auxData.getProtoAuxData(auxDataType);
-       	newAuxData.mergeFrom(protoAuxData);
-       	return newAuxData;
+    	Listing listing = program.getListing();
+    	Memory memory = program.getMemory();
+    	AddressIterator addressIterator = listing.getCommentAddressIterator(memory, true);
+
+    	// Find out how much to allocate for all comment string plus UUID and displacement for each one
+    	int numberOfComments = 0;
+    	int totalAllocation = 0;
+    	int sizeOfLong = 8;
+        while (addressIterator.hasNext()) {
+        	Address commentAddress = addressIterator.next();
+        	// Look only for PRE for comments:
+        	String comment = listing.getComment(CodeUnit.PRE_COMMENT, commentAddress);
+        	if (comment != null) {
+        		// For each comment, allocate: space for the Offset, and for the string itself
+        		// The "Offset" is actually a UUID and an uint64, total is size of 3 longs
+        		// The string itself needs length of bytes plus one long for storing the string size
+        		// Thus for each comment we need string byte length, plus 4 times size of long
+        		totalAllocation += comment.getBytes(StandardCharsets.UTF_8).length;
+        		totalAllocation += (4 * sizeOfLong);
+        		numberOfComments += 1;
+        	}
+        }
+        // Add room for the number of comments
+        totalAllocation += sizeOfLong;
+        Msg.debug(this, " Counted" + String.format("%d comments", numberOfComments));
+        Msg.debug(this, " Allocation" + String.format("%d bytes", totalAllocation));
+        
+        // I NEED A ADDRESS TO Code Block UUID function!
+        // - could be static method in loader based on byte_interval map generated during loading
+        // - will need to make that data static as well!!
+        // REMEMBER TO SUBTRACT IMAGE BASE because IR does not have that included in the block address
+        byte[] newCommentBytes = new byte[totalAllocation];
+        Serialization serialization = new Serialization(newCommentBytes);
+        serialization.putLong(numberOfComments);
+        
+        // Run through the comments again, this time adding to the comment data
+    	addressIterator = listing.getCommentAddressIterator(memory, true);
+        while (addressIterator.hasNext()) {
+        	Address commentAddress = addressIterator.next();
+        	String commentString = listing.getComment(CodeUnit.PRE_COMMENT, commentAddress);
+            Msg.debug(this, " Exporting " + commentString);
+
+        	if (commentString != null) {
+            	long imageBase = program.getImageBase().getOffset();
+            	long longAddress = commentAddress.getOffset() - imageBase;
+            	Block block = module.getBlockFromAddress(longAddress);
+                if (block == null) {
+                	continue;
+                }
+                // OK Got comment got block got address
+                // now I need the block address so I can set the displacement to be the difference
+                // between the block start and the comment address
+                // Also need to UUID of the code or data block. THen I can write them.
+                Long blockAddress = block.getByteInterval().getAddress() + block.getOffset();
+                Long offset = longAddress - blockAddress;
+                Msg.debug(this, " Offset " + String.format("0X%x", offset));
+                UUID uuid;
+                if (block.getCodeBlock() != null) {
+                	uuid = block.getCodeBlock().getUuid();
+                } else if (block.getDataBlock() != null) {
+                	uuid = block.getDataBlock().getUuid();
+                } else {
+                	uuid = com.grammatech.gtirb.Util.NIL_UUID;
+                }
+                serialization.putUuid(uuid);
+                serialization.putLong(offset);
+                serialization.putString(commentString);
+        	}
+        }
+        //ByteString newCommentData = ByteString.copyFrom(commentData);
+        newAuxData.setData(ByteString.copyFrom(newCommentBytes));
+        //newAuxData.setTypeName("comments");
+        //newAuxData.setTypeName("mapping<Offset,string>");
+        String typeName = "mapping<Offset,string>";
+        byte[] typeNameBytes = typeName.getBytes(StandardCharsets.UTF_8);
+        ByteString typeNameByteString = ByteString.copyFrom(typeNameBytes);
+        //confused why this did not work?
+        //newAuxData.setTypeNameBytes(ByteString.copyFromUtf8(typeName));
+        newAuxData.setTypeNameBytes(typeNameByteString);
+       	return newAuxData;    	
+    }
+    
+    private AuxDataOuterClass.AuxData.Builder exportAuxData(AuxData auxData, String auxDataType, Program program, com.grammatech.gtirb.Module module) {
+    	if (auxDataType.equals("comments")) {
+    		// Should return exportComments:
+           	return exportComments(auxData, program, module);    	
+    	}
+    	AuxDataOuterClass.AuxData.Builder newAuxData = AuxDataOuterClass.AuxData.newBuilder();
+    	AuxDataOuterClass.AuxData oldAuxData = auxData.getProtoAuxData(auxDataType);
+       	//newAuxData.mergeFrom(protoAuxData);
+        byte[] oldAuxDataBytes = oldAuxData.getData().toByteArray();
+        newAuxData.setData(ByteString.copyFrom(oldAuxDataBytes));
+        newAuxData.setTypeName(oldAuxData.getTypeName());
+       	return newAuxData;    		
     }    
     
     // Have to avoid confusion with java.io.Module
-    public ModuleOuterClass.Module.Builder exportModule(com.grammatech.gtirb.Module module) {
+    private ModuleOuterClass.Module.Builder exportModule(com.grammatech.gtirb.Module module, Program program) {
     	ModuleOuterClass.Module.Builder newModule = ModuleOuterClass.Module.newBuilder();
     	ModuleOuterClass.Module protoModule = module.getProtoModule();
     	newModule.setUuid(protoModule.getUuid());
@@ -116,7 +218,8 @@ public class GtirbExporter extends Exporter {
 
     	Set<String> auxDataTypes = module.getAuxData().getAuxDataTypes();
     	for (String auxDataType : auxDataTypes) {
-    		AuxDataOuterClass.AuxData.Builder newAuxData = exportAuxData(module.getAuxData(), auxDataType);
+    		AuxDataOuterClass.AuxData.Builder newAuxData = exportAuxData(module.getAuxData(), auxDataType, program, module);
+    		// QUESTION WHETHER CALLING build(): HERE IS CORRECT! 
     		AuxDataOuterClass.AuxData builtAuxData = newAuxData.build();
     		newModule.putAuxData(auxDataType, builtAuxData);
     	}   	
@@ -124,7 +227,7 @@ public class GtirbExporter extends Exporter {
     	return newModule;
     }
 
-    public boolean exportProgramToFile(Program program, IR ir, OutputStream fileOut) {
+    private boolean exportProgramToFile(Program program, IR ir, OutputStream fileOut) {
     	//
     	// Start building a new IR
     	IROuterClass.IR.Builder newIR = IROuterClass.IR.newBuilder();
@@ -139,7 +242,7 @@ public class GtirbExporter extends Exporter {
     	newIR.setVersion(protoIR.getVersion());
     	
     	// Add the module
-    	ModuleOuterClass.Module.Builder newModule = exportModule(ir.getModule());
+    	ModuleOuterClass.Module.Builder newModule = exportModule(ir.getModule(), program);
     	newModule.setName("GTIRB of TIM");
     	newIR.addModules(newModule);
  
@@ -185,9 +288,23 @@ public class GtirbExporter extends Exporter {
 //        	return false;
 //        }
         
-        // 3. Load file into IR
- //       IR ir = IR.loadFile(inputStream);
+        // 3. Get the IR
+        // It could be that the IR loaded by the loader is still around
+        // (a load followed by an export for instance). If so, use it.
+        // Otherwise we need to load the file.
         IR ir = GtirbLoader.getIR();
+        if (ir == null) {
+            File inputFile = new File(fileName);
+            InputStream inputStream;
+            try {
+            	inputStream = new FileInputStream(inputFile);
+            }
+            catch (Exception e) {
+            	Msg.error(this, "Error opening file" + e); 
+            	return false;
+            }
+            ir = IR.loadFile(inputStream);
+        }
         
         // 4. Open output file
     	FileOutputStream fos = null;

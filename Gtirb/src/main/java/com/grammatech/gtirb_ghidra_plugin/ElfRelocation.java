@@ -36,9 +36,7 @@ public class ElfRelocation {
         R_X86_64_GOTPCREL(9);
         private int value;
 
-        private RelocType(int value) {
-            this.value = value;
-        }
+        private RelocType(int value) { this.value = value; }
     }
 
     private RelocType relocType;
@@ -46,49 +44,38 @@ public class ElfRelocation {
     private long relocAddr;
     private long relocAddend;
 
-    public ElfRelocation(long offset, long info, long addend, long imageLoadAddress) {
+    public ElfRelocation(long offset, long info, long addend,
+                         long imageLoadAddress) {
 
-        this.setRelocType(RelocType.values()[(int) (info & 0x0ffffffff)]);
-        this.setRelocSym((int) (info >>> 32));
+        this.setRelocType(RelocType.values()[(int)(info & 0x0ffffffff)]);
+        this.setRelocSym((int)(info >>> 32));
         this.setRelocAddr(offset + imageLoadAddress);
         this.setRelocAddend(addend);
     }
 
     public ElfRelocation(long offset, long info, long imageLoadAddress) {
 
-        this.setRelocType(RelocType.values()[(int) (info & 0x0ffffffff)]);
-        this.setRelocSym((int) (info >>> 32));
+        this.setRelocType(RelocType.values()[(int)(info & 0x0ffffffff)]);
+        this.setRelocSym((int)(info >>> 32));
         this.setRelocAddr(offset + imageLoadAddress);
         this.setRelocAddend(0);
     }
 
-    public RelocType getRelocType() {
-        return relocType;
-    }
+    public RelocType getRelocType() { return relocType; }
 
     public void setRelocType(RelocType relocType) {
         this.relocType = relocType;
     }
 
-    public int getRelocSym() {
-        return relocSym;
-    }
+    public int getRelocSym() { return relocSym; }
 
-    public void setRelocSym(int relocSym) {
-        this.relocSym = relocSym;
-    }
+    public void setRelocSym(int relocSym) { this.relocSym = relocSym; }
 
-    public long getRelocAddr() {
-        return relocAddr;
-    }
+    public long getRelocAddr() { return relocAddr; }
 
-    public void setRelocAddr(long relocAddr) {
-        this.relocAddr = relocAddr;
-    }
+    public void setRelocAddr(long relocAddr) { this.relocAddr = relocAddr; }
 
-    public long getRelocAddend() {
-        return relocAddend;
-    }
+    public long getRelocAddend() { return relocAddend; }
 
     public void setRelocAddend(long relocAddend) {
         this.relocAddend = relocAddend;

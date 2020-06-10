@@ -22,9 +22,7 @@ public class DynamicSymbol {
         WEAK(2);
         private int value;
 
-        private DynamicSymbolBinding(int value) {
-            this.value = value;
-        }
+        private DynamicSymbolBinding(int value) { this.value = value; }
     }
 
     public enum DynamicSymbolType {
@@ -37,9 +35,7 @@ public class DynamicSymbol {
         TLS(6);
         private int value;
 
-        private DynamicSymbolType(int value) {
-            this.value = value;
-        }
+        private DynamicSymbolType(int value) { this.value = value; }
     }
 
     public enum DynamicSymbolVisibility {
@@ -49,9 +45,7 @@ public class DynamicSymbol {
         PROTECTED(3);
         private int value;
 
-        private DynamicSymbolVisibility(int value) {
-            this.value = value;
-        }
+        private DynamicSymbolVisibility(int value) { this.value = value; }
     }
 
     private String name;
@@ -63,7 +57,8 @@ public class DynamicSymbol {
     private long size;
     private long addr;
 
-    public DynamicSymbol(String name, byte info, byte other, short shndx, long value, long size) {
+    public DynamicSymbol(String name, byte info, byte other, short shndx,
+                         long value, long size) {
         this.setName(name);
         this.setType(DynamicSymbolType.values()[info & 0x0f]);
         this.setBinding(DynamicSymbolBinding.values()[info >>> 4]);
@@ -73,67 +68,39 @@ public class DynamicSymbol {
         this.setSize(size);
     }
 
-    public String getName() {
-        return name;
-    }
+    public String getName() { return name; }
 
-    public void setName(String name) {
-        this.name = name;
-    }
+    public void setName(String name) { this.name = name; }
 
-    public DynamicSymbolType getType() {
-        return type;
-    }
+    public DynamicSymbolType getType() { return type; }
 
-    public void setType(DynamicSymbolType type) {
-        this.type = type;
-    }
+    public void setType(DynamicSymbolType type) { this.type = type; }
 
-    public DynamicSymbolBinding getBinding() {
-        return binding;
-    }
+    public DynamicSymbolBinding getBinding() { return binding; }
 
     public void setBinding(DynamicSymbolBinding binding) {
         this.binding = binding;
     }
 
-    public DynamicSymbolVisibility getVisibility() {
-        return visibility;
-    }
+    public DynamicSymbolVisibility getVisibility() { return visibility; }
 
     public void setVisibility(DynamicSymbolVisibility visibility) {
         this.visibility = visibility;
     }
 
-    public int getShndx() {
-        return shndx;
-    }
+    public int getShndx() { return shndx; }
 
-    public void setShndx(int shndx) {
-        this.shndx = shndx;
-    }
+    public void setShndx(int shndx) { this.shndx = shndx; }
 
-    public long getValue() {
-        return value;
-    }
+    public long getValue() { return value; }
 
-    public void setValue(long value) {
-        this.value = value;
-    }
+    public void setValue(long value) { this.value = value; }
 
-    public long getSize() {
-        return size;
-    }
+    public long getSize() { return size; }
 
-    public void setSize(long size) {
-        this.size = size;
-    }
+    public void setSize(long size) { this.size = size; }
 
-    public long getAddr() {
-        return addr;
-    }
+    public long getAddr() { return addr; }
 
-    public void setAddr(long addr) {
-        this.addr = addr;
-    }
+    public void setAddr(long addr) { this.addr = addr; }
 }

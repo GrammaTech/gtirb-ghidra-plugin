@@ -34,7 +34,8 @@ public class GtirbUtil {
 
     public static final boolean isGtIrb(Program program) {
         if (program != null) {
-            if (program.getExecutablePath().endsWith(GtirbConstants.GTIRB_EXTENSION)) {
+            if (program.getExecutablePath().endsWith(
+                    GtirbConstants.GTIRB_EXTENSION)) {
                 return true;
             }
         }
@@ -44,52 +45,52 @@ public class GtirbUtil {
     public static String getElfSectionType(int sh_type) {
         String retval;
         switch (sh_type) {
-            case 0:
-                retval = "SHT_NULL";
-                break;
-            case 1:
-                retval = "SHT_PROGBITS";
-                break;
-            case 2:
-                retval = "SHT_SYMTAB";
-                break;
-            case 3:
-                retval = "SHT_STRTAB";
-                break;
-            case 4:
-                retval = "SHT_RELA";
-                break;
-            case 5:
-                retval = "SHT_HASH";
-                break;
-            case 6:
-                retval = "SHT_DYNAMIC";
-                break;
-            case 7:
-                retval = "SHT_NOTE";
-                break;
-            case 8:
-                retval = "SHT_NOBITS";
-                break;
-            case 9:
-                retval = "SHT_REL";
-                break;
-            case 10:
-                retval = "SHT_DYNSYM";
-                break;
-            case 11:
-                retval = "SHLIB";
-                break;
-                // 12? 13?
-            case 14:
-                retval = "INIT_ARRAY";
-                break;
-            case 15:
-                retval = "FINI_ARRAY";
-                break;
-            default:
-                retval = String.format("0x%X", sh_type);
-                break;
+        case 0:
+            retval = "SHT_NULL";
+            break;
+        case 1:
+            retval = "SHT_PROGBITS";
+            break;
+        case 2:
+            retval = "SHT_SYMTAB";
+            break;
+        case 3:
+            retval = "SHT_STRTAB";
+            break;
+        case 4:
+            retval = "SHT_RELA";
+            break;
+        case 5:
+            retval = "SHT_HASH";
+            break;
+        case 6:
+            retval = "SHT_DYNAMIC";
+            break;
+        case 7:
+            retval = "SHT_NOTE";
+            break;
+        case 8:
+            retval = "SHT_NOBITS";
+            break;
+        case 9:
+            retval = "SHT_REL";
+            break;
+        case 10:
+            retval = "SHT_DYNSYM";
+            break;
+        case 11:
+            retval = "SHLIB";
+            break;
+            // 12? 13?
+        case 14:
+            retval = "INIT_ARRAY";
+            break;
+        case 15:
+            retval = "FINI_ARRAY";
+            break;
+        default:
+            retval = String.format("0x%X", sh_type);
+            break;
         }
         return retval;
     }

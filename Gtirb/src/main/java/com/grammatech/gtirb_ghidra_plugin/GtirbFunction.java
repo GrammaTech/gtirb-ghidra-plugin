@@ -30,35 +30,19 @@ public class GtirbFunction {
         setUuid(uuid);
     }
 
-    public String getName() {
-        return this.name;
-    }
+    public String getName() { return this.name; }
 
-    public void setName(String name) {
-        this.name = name;
-    }
+    public void setName(String name) { this.name = name; }
 
-    public long getAddress() {
-        return this.address;
-    }
+    public long getAddress() { return this.address; }
 
-    public void setAddress(long address) {
-        this.address = address;
-    }
+    public void setAddress(long address) { this.address = address; }
 
-    public int getSize() {
-        return this.size;
-    }
+    public int getSize() { return this.size; }
 
-    public void setSize(int size) {
-        this.size = size;
-    }
+    public void setSize(int size) { this.size = size; }
 
-    public UUID getUuid() {
-        return this.uuid;
-    }
+    public UUID getUuid() { return this.uuid; }
 
-    public void setUuid(UUID uuid) {
-        this.uuid = uuid;
-    }
+    public void setUuid(UUID uuid) { this.uuid = uuid; }
 }

@@ -3,7 +3,7 @@ stages:
   - run
 
 default:
-  image: openjdk:11-jdk-slim
+  image: $DOCKER_REGISTRY/$CI_PROJECT_NAMESPACE/cpp/ubuntu20
   tags: ["kubernetes"]
 
 build:

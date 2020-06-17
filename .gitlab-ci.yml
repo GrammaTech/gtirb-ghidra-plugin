@@ -1,5 +1,19 @@
-job1:
-  script: "execute-script-for-job1"
+stages:
+  - build
+  - run
 
-job2:
-  script: "execute-script-for-job2"
+default:
+  image: openjdk:11-jdk-slim
+  tags: ["kubernetes"]
+
+build:
+  stage: build
+  script:
+  - echo "Building docker image..."
+  - docker build . -t ghidra_plugin
+
+run:
+  stage: run
+  script:
+  - echo "Running docker image..."
+  - docker run -ti ghidra_plugin

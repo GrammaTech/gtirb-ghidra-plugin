@@ -20,7 +20,7 @@ repositories {
     jcenter()
 }
 dependencies {
-    compile files('lib/protobuf-java-3.0.0.jar')
+    compile files('lib/protobuf-java-3.11.4.jar')
 }
 //----------------------START "DO NOT MODIFY" SECTION------------------------------
 def ghidraInstallDir

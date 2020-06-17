@@ -1,0 +1,27 @@
+#!/bin/bash
+#
+# Test whether an import was successful by dmping domments in the imported file.
+#
+# 1. MUST have a Ghidra install to work with:
+#
+GHIDRA_INSTALL_DIR=/ghidra
+GHIDRA_PROJECT=/workspace/Project
+GHIDRA_FILE="helloX64.gtirb"
+GHIDRA_SCRIPT=DumpComments.java
+
+echo ""
+echo " Import a file and dump comments to show that import was successful"
+echo "    Ghidra install dir:  ${GHIDRA_INSTALL_DIR}"
+echo "    Ghidra project:      ${GHIDRA_PROJECT}"
+echo "    Ghidra file:         ${GHIDRA_FILE}"
+echo ""
+
+HEADLESS_LAUNCH=${GHIDRA_INSTALL_DIR}/support/analyzeHeadless
+PROJECT_LOCATION=`dirname ${GHIDRA_PROJECT}`
+PROJECT_NAME=`basename ${GHIDRA_PROJECT}`
+if ${HEADLESS_LAUNCH} ${PROJECT_LOCATION} ${PROJECT_NAME} -import ${GHIDRA_FILE} -noanalysis -postScript ${GHIDRA_SCRIPT} | grep "Dump Comments: OK"; then
+	exit 0
+else
+	echo "Unable to dump comments."
+	exit 1
+fi

@@ -1,7 +1,6 @@
 stages:
   - build-plugin
-  - install-plugin
-  - test-import
+  - test-plugin
 
 default:
   image: docker.grammatech.com/rewriting/gtirb-ghidra-plugin
@@ -11,11 +10,10 @@ build-plugin:
   stage: build-plugin
   artifacts:
     paths: 
-    - /home/testdir/gtirb-ghidra-plugin/Gtirb/dist/*.zip
+    - ${GHIDRA_INSTALL_DIR}/Extensions/Ghidra/${GHIDRA_DOWNLOAD_VERSION}_Gtirb.zip
     expire_in: 1 day
-    
   script:
-  - echo "Building docker image..."
+  - echo "Building plugin..."
   - cd /home/testdir
   - git clone https://git.grammatech.com/rewriting/gtirb.git
   - cd gtirb
@@ -26,19 +24,14 @@ build-plugin:
   - cp /home/testdir/protobuf-java-${PROTOBUF_VERSION}.jar /home/testdir/gtirb-ghidra-plugin/Gtirb/lib
   - cd /home/testdir/gtirb-ghidra-plugin/Gtirb
   - gradle
+  - cd /home/testdir/gtirb-ghidra-plugin/Gtirb/dist
+  - mv *.zip ${GHIDRA_INSTALL_DIR}/Extensions/Ghidra/${GHIDRA_DOWNLOAD_VERSION}_Gtirb.zip
   
-install-plugin:
-   stage: install-plugin
+test-plugin:
+   stage: test-plugin
    needs: [build-plugin]
    script:
-   - cd /home/testdir/gtirb-ghidra-plugin/Gtirb/dist
-   - mv *.zip ${GHIDRA_INSTALL_DIR}/Extensions/Ghidra/${GHIDRA_DOWNLOAD_VERSION}_Gtirb.zip
    - cd ${GHIDRA_INSTALL_DIR}/Ghidra/Extensions
    - unzip ../../Extensions/Ghidra/${GHIDRA_DOWNLOAD_VERSION}_Gtirb.zip
-
-test-import:
-  stage: test-import
-  needs: [install-plugin]
-  script:
   - cd /home/testdir
   - ./test-import

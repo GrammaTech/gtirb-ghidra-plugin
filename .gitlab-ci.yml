@@ -2,7 +2,7 @@ stages:
   - build
 
 default:
-  image: $DOCKER_REGISTRY/$CI_PROJECT_NAMESPACE/gtirb-ghidra-plugin
+  image: docker.grammatech.com/rewriting/gtirb-ghidra-plugin
   tags: ["kubernetes"]
 
 build:

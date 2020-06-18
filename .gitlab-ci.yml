@@ -1,19 +1,12 @@
 stages:
   - build
-  - run
 
 default:
-  image: $DOCKER_REGISTRY/$CI_PROJECT_NAMESPACE/cpp/ubuntu20
+  image: $DOCKER_REGISTRY/$CI_PROJECT_NAMESPACE/gtirb-ghidra-plugin
   tags: ["kubernetes"]
 
 build:
   stage: build
   script:
   - echo "Building docker image..."
-  - docker build . -t ghidra_plugin
-
-run:
-  stage: run
-  script:
-  - echo "Running docker image..."
-  - docker run -ti ghidra_plugin
+  - docker run /workspace/build-plugin

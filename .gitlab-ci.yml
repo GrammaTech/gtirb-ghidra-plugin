@@ -28,10 +28,10 @@ build-plugin:
   - mv *.zip ${GHIDRA_INSTALL_DIR}/Extensions/Ghidra/${GHIDRA_DOWNLOAD_VERSION}_Gtirb.zip
   
 test-plugin:
-   stage: test-plugin
-   needs: [build-plugin]
-   script:
-   - cd ${GHIDRA_INSTALL_DIR}/Ghidra/Extensions
-   - unzip ../../Extensions/Ghidra/${GHIDRA_DOWNLOAD_VERSION}_Gtirb.zip
+  stage: test-plugin
+  needs: [build-plugin]
+  script:
+  - cd ${GHIDRA_INSTALL_DIR}/Ghidra/Extensions
+  - unzip ../../Extensions/Ghidra/${GHIDRA_DOWNLOAD_VERSION}_Gtirb.zip
   - cd /home/testdir
   - ./test-import

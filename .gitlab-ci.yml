@@ -10,7 +10,7 @@ build-plugin:
   stage: build-plugin
   artifacts:
     paths: 
-    - ${GHIDRA_INSTALL_DIR}/Extensions/Ghidra/${GHIDRA_DOWNLOAD_VERSION}_Gtirb.zip
+    - /home/testdir/plugin.zip
     expire_in: 1 day
   script:
   - echo "Building plugin..."
@@ -25,12 +25,14 @@ build-plugin:
   - cd /home/testdir/gtirb-ghidra-plugin/Gtirb
   - gradle
   - cd /home/testdir/gtirb-ghidra-plugin/Gtirb/dist
-  - mv *.zip ${GHIDRA_INSTALL_DIR}/Extensions/Ghidra/${GHIDRA_DOWNLOAD_VERSION}_Gtirb.zip
+  - cp *.zip /home/testdir/plugin.zip
+#  - mv *.zip ${GHIDRA_INSTALL_DIR}/Extensions/Ghidra/${GHIDRA_DOWNLOAD_VERSION}_Gtirb.zip
   
 test-plugin:
   stage: test-plugin
   needs: [build-plugin]
   script:
+  - mv /home/testdir/plugin.zip ${GHIDRA_INSTALL_DIR}/Extensions/Ghidra/${GHIDRA_DOWNLOAD_VERSION}_Gtirb.zip
   - cd ${GHIDRA_INSTALL_DIR}/Ghidra/Extensions
   - unzip ../../Extensions/Ghidra/${GHIDRA_DOWNLOAD_VERSION}_Gtirb.zip
   - cd /home/testdir

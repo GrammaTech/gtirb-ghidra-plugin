@@ -9,4 +9,4 @@ build:
   stage: build
   script:
   - echo "Building docker image..."
-  - docker run /workspace/build-plugin
+  - /workspace/build-plugin

@@ -1,12 +1,39 @@
 stages:
   - build
+  - install
+  - test-import
 
 default:
-  image: docker.grammatech.com/rewriting/gtirb-ghidra-plugin
+  image: $DOCKER_REGISTRY/rewriting/gtirb-ghidra-plugin
   tags: ["kubernetes"]
 
 build:
   stage: build
   script:
   - echo "Building docker image..."
-  - /workspace/build-plugin
+  - cd /home/testdir
+  - git clone https://git.grammatech.com/rewriting/gtirb.git
+  - cd gtirb
+  - protoc --java_out=java --proto_path=proto ./proto/*.proto
+  - cd /home/testdir
+  - git clone https://git.grammatech.com/rewriting/gtirb-ghidra-plugin.git
+  - cp -r /home/testdir/gtirb/java/com/grammatech/gtirb /home/testdir/gtirb-ghidra-plugin/Gtirb/src/main/java/com/grammatech
+  - cp /home/testdir/protobuf-java-${PROTOBUF_VERSION}.jar /home/testdir/gtirb-ghidra-plugin/Gtirb/lib
+  - cd /home/testdir/gtirb-ghidra-plugin/Gtirb
+  - gradle
+  
+ install:
+   stage: install
+   needs: [build]
+   script:
+   - cd /workspace/gtirb-ghidra-plugin/Gtirb/dist
+   - mv *.zip ${GHIDRA_INSTALL_DIR}/Extensions/Ghidra/${GHIDRA_DOWNLOAD_VERSION}_Gtirb.zip
+   - cd ${GHIDRA_INSTALL_DIR}/Ghidra/Extensions
+   - unzip ../../Extensions/Ghidra/${GHIDRA_DOWNLOAD_VERSION}_Gtirb.zip
+
+test-import:
+  stage: test-import
+  needs: [install]
+  script:
+  - cd /home/testdir
+  - ./test-import

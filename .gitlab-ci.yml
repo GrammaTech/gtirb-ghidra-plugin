@@ -1,17 +1,12 @@
 stages:
-  - build-plugin
-  - test-plugin
+  - build-and-test
 
 default:
   image: docker.grammatech.com/rewriting/gtirb-ghidra-plugin
   tags: ["kubernetes"]
 
-build-plugin:
-  stage: build-plugin
-  artifacts:
-    paths: 
-    - /home/testdir/plugin.zip
-    expire_in: 1 day
+build-and-test:
+  stage: build-and-test
   script:
   - echo "Building plugin..."
   - cd /home/testdir
@@ -25,14 +20,7 @@ build-plugin:
   - cd /home/testdir/gtirb-ghidra-plugin/Gtirb
   - gradle
   - cd /home/testdir/gtirb-ghidra-plugin/Gtirb/dist
-  - cp *.zip /home/testdir/plugin.zip
-#  - mv *.zip ${GHIDRA_INSTALL_DIR}/Extensions/Ghidra/${GHIDRA_DOWNLOAD_VERSION}_Gtirb.zip
-  
-test-plugin:
-  stage: test-plugin
-  needs: [build-plugin]
-  script:
-  - mv /home/testdir/plugin.zip ${GHIDRA_INSTALL_DIR}/Extensions/Ghidra/${GHIDRA_DOWNLOAD_VERSION}_Gtirb.zip
+  - mv *.zip ${GHIDRA_INSTALL_DIR}/Extensions/Ghidra/${GHIDRA_DOWNLOAD_VERSION}_Gtirb.zip
   - cd ${GHIDRA_INSTALL_DIR}/Ghidra/Extensions
   - unzip ../../Extensions/Ghidra/${GHIDRA_DOWNLOAD_VERSION}_Gtirb.zip
   - cd /home/testdir

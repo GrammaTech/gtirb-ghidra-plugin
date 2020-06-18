@@ -5,7 +5,7 @@
 # 1. MUST have a Ghidra install to work with:
 #
 GHIDRA_INSTALL_DIR=/ghidra
-GHIDRA_PROJECT=/workspace/Project
+GHIDRA_PROJECT=/home/testdir/Project
 GHIDRA_FILE="helloX64.gtirb"
 GHIDRA_SCRIPT=DumpComments.java
 

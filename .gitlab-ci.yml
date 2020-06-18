@@ -26,7 +26,7 @@ install-plugin:
    stage: install-plugin
    needs: [build-plugin]
    script:
-   - cd /workspace/gtirb-ghidra-plugin/Gtirb/dist
+   - cd /home/testdir/gtirb-ghidra-plugin/Gtirb/dist
    - mv *.zip ${GHIDRA_INSTALL_DIR}/Extensions/Ghidra/${GHIDRA_DOWNLOAD_VERSION}_Gtirb.zip
    - cd ${GHIDRA_INSTALL_DIR}/Ghidra/Extensions
    - unzip ../../Extensions/Ghidra/${GHIDRA_DOWNLOAD_VERSION}_Gtirb.zip

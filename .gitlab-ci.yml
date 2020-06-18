@@ -9,6 +9,11 @@ default:
 
 build-plugin:
   stage: build-plugin
+  artifacts:
+    paths: 
+    - /home/testdir/gtirb-ghidra-plugin/Gtirb/dist/*.zip
+    expire_in: 1 day
+    
   script:
   - echo "Building docker image..."
   - cd /home/testdir

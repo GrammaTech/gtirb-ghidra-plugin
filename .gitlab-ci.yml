@@ -4,7 +4,7 @@ stages:
   - test-import
 
 default:
-  image: $DOCKER_REGISTRY/rewriting/gtirb-ghidra-plugin
+  image: docker.grammatech.com/rewriting/gtirb-ghidra-plugin
   tags: ["kubernetes"]
 
 build-plugin:

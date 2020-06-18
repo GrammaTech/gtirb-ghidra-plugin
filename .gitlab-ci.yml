@@ -22,7 +22,7 @@ build-plugin:
   - cd /home/testdir/gtirb-ghidra-plugin/Gtirb
   - gradle
   
- install-plugin:
+install-plugin:
    stage: install-plugin
    needs: [build-plugin]
    script:

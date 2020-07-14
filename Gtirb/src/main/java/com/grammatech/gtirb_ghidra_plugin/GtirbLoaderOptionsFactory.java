@@ -67,7 +67,7 @@ public class GtirbLoaderOptionsFactory {
         // imageBase = elf.findImageBase(); if (imageBase == 0 &&
         // (elf.isRelocatable() || elf.isSharedObject())) {
         //		imageBase = elf.is64Bit() ? IMAGE64_BASE_DEFAULT :
-        //IMAGE_BASE_DEFAULT;
+        // IMAGE_BASE_DEFAULT;
         // }
         long imageBase = IMAGE64_BASE_DEFAULT;
         AddressSpace defaultSpace =
@@ -85,8 +85,8 @@ public class GtirbLoaderOptionsFactory {
 
         // options.add(
         //		new Option(RESOLVE_EXTERNAL_SYMBOLS_OPTION_NAME,
-        //RESOLVE_EXTERNAL_SYMBOLS_DEFAULT, 		Boolean.class,
-        //Loader.COMMAND_LINE_ARG_PREFIX + "-resolveExternalSymbols"));
+        // RESOLVE_EXTERNAL_SYMBOLS_DEFAULT, 		Boolean.class,
+        // Loader.COMMAND_LINE_ARG_PREFIX + "-resolveExternalSymbols"));
     }
 
     private static String getBaseOffsetString(long imageBase,
@@ -112,13 +112,13 @@ public class GtirbLoaderOptionsFactory {
             // if (name.equals(PERFORM_RELOCATIONS_NAME)) {
             //	if (!Boolean.class.isAssignableFrom(option.getValueClass())) {
             //		return "Invalid type for option: " + name + " - " +
-            //option.getValueClass();
+            // option.getValueClass();
             //	}
             // }
             // else if (name.equals(INCLUDE_OTHER_BLOCKS)) {
             //	if (!Boolean.class.isAssignableFrom(option.getValueClass())) {
             //		return "Invalid type for option: " + name + " - " +
-            //option.getValueClass();
+            // option.getValueClass();
             //	}
             // }
             // else if (name.equals(IMAGE_BASE_OPTION_NAME)) {
@@ -154,7 +154,7 @@ public class GtirbLoaderOptionsFactory {
     //
     //	static boolean includeOtherBlocks(List<Option> options) {
     //		return OptionUtils.getOption(INCLUDE_OTHER_BLOCKS, options,
-    //INCLUDE_OTHER_BLOCKS_DEFAULT);
+    // INCLUDE_OTHER_BLOCKS_DEFAULT);
     //	}
 
     static boolean hasImageBaseOption(List<Option> options) {

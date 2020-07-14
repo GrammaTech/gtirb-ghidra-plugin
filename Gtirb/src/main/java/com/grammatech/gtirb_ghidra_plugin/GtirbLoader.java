@@ -168,7 +168,6 @@ public class GtirbLoader extends AbstractLibrarySupportLoader {
         return nameString;
     }
 
-
     private String getFunctionName(Module m, UUID feBlockUuid) {
         ArrayList<Symbol> symbols = m.getSymbols();
         UUID referentUuid;
@@ -836,7 +835,7 @@ public class GtirbLoader extends AbstractLibrarySupportLoader {
             // TODO: Make IR a class level object so that it won't have to be
             // re-loaded later
             //	(OR come up with a shortcut way of getting ISA and FileFormat so
-            //that loading isn't needed here)
+            // that loading isn't needed here)
             //
             InputStream fileIn = provider.getInputStream(0);
             GtirbLoader.ir = IR.loadFile(fileIn);
@@ -1071,8 +1070,9 @@ public class GtirbLoader extends AbstractLibrarySupportLoader {
         //        for (Section section : sections) {
         //            for (ByteInterval byteInterval :
         //            section.getByteIntervals()) { 	for (Block block :
-        //            byteInterval.getBlockList()) { 		DataBlock dataBlock =
-        //            block.getDataBlock(); 		if (dataBlock != null) {
+        //            byteInterval.getBlockList()) { 		DataBlock
+        //            dataBlock = block.getDataBlock(); 		if
+        //            (dataBlock != null) {
         //                        long startAddress =
         //                        getByteIntervalAddress(dataBlock.getByteIntervalUuid())
         //                        + dataBlock.getOffset(); long endAddress =

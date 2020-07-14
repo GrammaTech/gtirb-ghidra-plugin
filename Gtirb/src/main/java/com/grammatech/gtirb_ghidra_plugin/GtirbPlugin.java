@@ -28,14 +28,16 @@ import java.awt.BorderLayout;
 import javax.swing.*;
 import resources.Icons;
 
-/** TODO: Provide class-level documentation that describes what this plugin does. */
+/**
+ * TODO: Provide class-level documentation that describes what this plugin
+ * does.
+ */
 // @formatter:off
-@PluginInfo(
-        status = PluginStatus.STABLE,
-        packageName = ExamplesPluginPackage.NAME,
-        category = PluginCategoryNames.EXAMPLES,
-        shortDescription = "Plugin short description goes here.",
-        description = "Plugin long description goes here.")
+@PluginInfo(status = PluginStatus.STABLE,
+            packageName = ExamplesPluginPackage.NAME,
+            category = PluginCategoryNames.EXAMPLES,
+            shortDescription = "Plugin short description goes here.",
+            description = "Plugin long description goes here.")
 // @formatter:on
 public class GtirbPlugin extends ProgramPlugin {
 
@@ -66,7 +68,8 @@ public class GtirbPlugin extends ProgramPlugin {
         // TODO: Acquire services if necessary
     }
 
-    // TODO: If provider is desired, it is recommended to move it to its own file
+    // TODO: If provider is desired, it is recommended to move it to its own
+    // file
     private static class MyProvider extends ComponentProvider {
 
         private JPanel panel;
@@ -89,13 +92,12 @@ public class GtirbPlugin extends ProgramPlugin {
 
         // TODO: Customize actions
         private void createActions() {
-            action =
-                    new DockingAction("My Action", getName()) {
-                        @Override
-                        public void actionPerformed(ActionContext context) {
-                            Msg.showInfo(getClass(), panel, "Custom Action", "Hello!");
-                        }
-                    };
+            action = new DockingAction("My Action", getName()) {
+                @Override
+                public void actionPerformed(ActionContext context) {
+                    Msg.showInfo(getClass(), panel, "Custom Action", "Hello!");
+                }
+            };
             action.setToolBarData(new ToolBarData(Icons.ADD_ICON, null));
             action.setEnabled(true);
             action.markHelpUnnecessary();

@@ -36,7 +36,7 @@ RUN cd /workspace \
 
 #
 # Clone gtirb_ghidra_plugin and copy gtirb and protobuf files in
-# 
+#
 RUN cd /workspace \
     && git clone https://git.grammatech.com/rewriting/gtirb-ghidra-plugin.git \
     && cp -r /workspace/gtirb/java/com/grammatech/gtirb /workspace/gtirb-ghidra-plugin/Gtirb/src/main/java/com/grammatech
@@ -65,13 +65,13 @@ RUN wget --progress=bar:force -O /workspace/gradle.zip https://services.gradle.o
 #  (Putting the zip in Extensions/Ghidra and unzipping it to Ghidra/Extensions installs the plugin)
 #
 RUN cd /workspace/gtirb-ghidra-plugin/Gtirb/dist/ \
-    && mv *.zip ${GHIDRA_INSTALL_DIR}/Extensions/Ghidra/${GHIDRA_DOWNLOAD_VERSION}_Gtirb.zip \ 
+    && mv *.zip ${GHIDRA_INSTALL_DIR}/Extensions/Ghidra/${GHIDRA_DOWNLOAD_VERSION}_Gtirb.zip \
     && cd ${GHIDRA_INSTALL_DIR}/Ghidra/Extensions \
     && unzip ../../Extensions/Ghidra/${GHIDRA_DOWNLOAD_VERSION}_Gtirb.zip
-    
+
 #
 # Clean up
-# 
+#
 RUN  echo "===> Clean up unnecessary files..." \
     && apt-get purge -y --auto-remove wget unzip \
     && apt-get clean \

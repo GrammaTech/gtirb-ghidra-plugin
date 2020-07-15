@@ -393,68 +393,6 @@ public class GtirbLoader extends AbstractLibrarySupportLoader {
         return true;
     }
 
-    //
-    // Old way relied on elf section info in Aux Data, but keeping this for now,
-    // just for reference.
-    private boolean addSectionBytesOld(Section section, MessageLog log,
-                                       TaskMonitor monitor) {
-        // If section has multiple byte intervals, use a suffix on the name.
-        // Get section flags, and use them on all byte intervals in the section
-        // Get address and size, and create a comment using section type
-        //
-        int byteIntervalIndex = 0;
-        List<ByteInterval> byteIntervals = section.getByteIntervals();
-        int elfSectionFlags = (int)section.getElfSectionFlags();
-        boolean isWritable =
-            ((elfSectionFlags & ElfSectionHeaderConstants.SHF_WRITE) > 0);
-        boolean isReadable = true;
-        boolean isExecutable =
-            ((elfSectionFlags & ElfSectionHeaderConstants.SHF_EXECINSTR) > 0);
-        int numberOfByteIntervals = byteIntervals.size();
-
-        for (ByteInterval byteInterval : byteIntervals) {
-            String byteIntervalName;
-            if (numberOfByteIntervals == 1) {
-                byteIntervalName = section.getName();
-            } else {
-                byteIntervalName =
-                    section.getName() + "_" + byteIntervalIndex++;
-            }
-
-            if (!byteInterval.hasAddress()) {
-                Msg.info(this, "Unable to load byteInterval " +
-                                   byteIntervalName + " (has no address).");
-                continue;
-            }
-            Long byteIntervalAddress = byteInterval.getAddress();
-            long byteIntervalSize = byteInterval.getSize();
-            String byteIntervalComment =
-                GtirbUtil.getElfSectionType((int)section.getElfSectionType()) +
-                String.format(" [%08x - %08x]", byteIntervalAddress,
-                              (byteIntervalAddress + byteIntervalSize));
-            Address loadAddress =
-                program.getImageBase().add(byteIntervalAddress);
-            byte[] byteArray =
-                com.grammatech.gtirb.Util.toByteArray(byteInterval.getBytes());
-            if (byteArray == null) {
-                Msg.info(this, "Unable to load byteInterval " +
-                                   byteIntervalName + " (byteArray is empty).");
-                continue;
-            }
-            InputStream dataInput = new ByteArrayInputStream(byteArray);
-            try {
-                MemoryBlockUtils.createInitializedBlock(
-                    program, false, byteIntervalName, loadAddress, dataInput,
-                    byteIntervalSize, byteIntervalComment, "GTIRB Loader",
-                    isReadable, isWritable, isExecutable, log, monitor);
-            } catch (AddressOverflowException e) {
-                Msg.error(this, "Address Overflow Exception. " + e);
-                return false;
-            }
-        }
-        return true;
-    }
-
     private boolean addSectionBytes(Section section, MessageLog log,
                                     TaskMonitor monitor) {
         List<ByteInterval> byteIntervals = section.getByteIntervals();
@@ -1034,31 +972,36 @@ public class GtirbLoader extends AbstractLibrarySupportLoader {
         //     Import auxdata comments
         monitor.setMessage("Processing program comments...");
         Map<Offset, String> comments = module.getAuxData().getComments();
-        for (Map.Entry<Offset, String> entry : comments.entrySet()) {
-            Offset offset = entry.getKey();
-            // Offset has a UUID and a displacement
-            // In the case of a comment, the UUID should be the code/data block
-            // that has the comment
-            long commentAddress;
-            Node blockNode = Node.getByUuid(offset.getElementId());
-            if (blockNode instanceof CodeBlock) {
-                CodeBlock codeBlock = (CodeBlock)blockNode;
-                long byteIntervalAddress =
-                    codeBlock.getBlock().getByteInterval().getAddress();
-                commentAddress = byteIntervalAddress + codeBlock.getOffset() +
-                                 offset.getDisplacement();
-            } else if (blockNode instanceof DataBlock) {
-                DataBlock dataBlock = (DataBlock)blockNode;
-                long byteIntervalAddress =
-                    dataBlock.getBlock().getByteInterval().getAddress();
-                commentAddress = byteIntervalAddress + dataBlock.getOffset() +
-                                 offset.getDisplacement();
-            } else {
-                continue;
+        if (comments != null) {
+            for (Map.Entry<Offset, String> entry : comments.entrySet()) {
+                Offset offset = entry.getKey();
+                // Offset has a UUID and a displacement
+                // In the case of a comment, the UUID should be the code/data
+                // block that has the comment
+                long commentAddress;
+                Node blockNode = Node.getByUuid(offset.getElementId());
+                if (blockNode instanceof CodeBlock) {
+                    CodeBlock codeBlock = (CodeBlock)blockNode;
+                    long byteIntervalAddress =
+                        codeBlock.getBlock().getByteInterval().getAddress();
+                    commentAddress = byteIntervalAddress +
+                                     codeBlock.getOffset() +
+                                     offset.getDisplacement();
+                } else if (blockNode instanceof DataBlock) {
+                    DataBlock dataBlock = (DataBlock)blockNode;
+                    long byteIntervalAddress =
+                        dataBlock.getBlock().getByteInterval().getAddress();
+                    commentAddress = byteIntervalAddress +
+                                     dataBlock.getOffset() +
+                                     offset.getDisplacement();
+                } else {
+                    continue;
+                }
+                Address ghidraAddress =
+                    program.getImageBase().add(commentAddress);
+                program.getListing().setComment(
+                    ghidraAddress, CodeUnit.PRE_COMMENT, entry.getValue());
             }
-            Address ghidraAddress = program.getImageBase().add(commentAddress);
-            program.getListing().setComment(ghidraAddress, CodeUnit.PRE_COMMENT,
-                                            entry.getValue());
         }
 
         // Maybe misguided attempt to make sure all that that can be done has

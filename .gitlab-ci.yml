@@ -15,8 +15,6 @@ build-and-test:
   - protoc --java_out=java --proto_path=proto ./proto/*.proto
   - cd /home/testdir
   - git clone https://git.grammatech.com/rewriting/gtirb-ghidra-plugin.git
-  - cd gtirb-ghidra-plugin
-  - git checkout tneale/add_isas
   - cp -r /home/testdir/gtirb/java/com/grammatech/gtirb /home/testdir/gtirb-ghidra-plugin/Gtirb/src/main/java/com/grammatech
   - cp /home/testdir/protobuf-java-${PROTOBUF_VERSION}.jar /home/testdir/gtirb-ghidra-plugin/Gtirb/lib
   - cd /home/testdir/gtirb-ghidra-plugin/Gtirb

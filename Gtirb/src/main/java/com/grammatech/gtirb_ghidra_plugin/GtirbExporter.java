@@ -224,13 +224,26 @@ public class GtirbExporter extends Exporter {
             newModule.addProxies(newProxyBlock);
         }
 
+        // Special handling of comments here because that is first to be
+        // implemented If auxdata (in original gtirb) already had comments,
+        // comments will get exported But if it didn't (for example, added by
+        // Ghidra), then comments have to be exported explicitely
+        boolean alreadyHasComments = false;
         Set<String> auxDataTypes = module.getAuxData().getAuxDataTypes();
         for (String auxDataType : auxDataTypes) {
+            if (auxDataType.equals("comments"))
+                alreadyHasComments = true;
             AuxDataOuterClass.AuxData.Builder newAuxData = exportAuxData(
                 module.getAuxData(), auxDataType, program, module);
-            // QUESTION WHETHER CALLING build(): HERE IS CORRECT!
             AuxDataOuterClass.AuxData builtAuxData = newAuxData.build();
             newModule.putAuxData(auxDataType, builtAuxData);
+        }
+
+        if (alreadyHasComments == false) {
+            AuxDataOuterClass.AuxData.Builder newAuxData =
+                exportAuxData(module.getAuxData(), "comments", program, module);
+            AuxDataOuterClass.AuxData builtAuxData = newAuxData.build();
+            newModule.putAuxData("comments", builtAuxData);
         }
 
         return newModule;
@@ -252,7 +265,7 @@ public class GtirbExporter extends Exporter {
         // Add the module
         ModuleOuterClass.Module.Builder newModule =
             exportModule(ir.getModule(), program);
-        newModule.setName("GTIRB of TIM");
+        newModule.setName("module0");
         newIR.addModules(newModule);
 
         // Add the CFG

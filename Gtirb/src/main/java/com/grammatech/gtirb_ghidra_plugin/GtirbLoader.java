@@ -749,13 +749,17 @@ public class GtirbLoader extends AbstractLibrarySupportLoader {
 
         // Map supported GTIRB ISAs to ELF e_machine value
         Map<Module.ISA, String> machineMap = Map.ofEntries(
-            Map.entry(Module.ISA.PPC32, "20"), Map.entry(Module.ISA.X64, "62"));
+            Map.entry(Module.ISA.IA32, "3"), Map.entry(Module.ISA.PPC32, "20"),
+            Map.entry(Module.ISA.ARM, "40"), Map.entry(Module.ISA.X64, "62"));
 
         Map<Module.ISA, Integer> sizeMap = Map.ofEntries(
-            Map.entry(Module.ISA.PPC32, 32), Map.entry(Module.ISA.X64, 64));
+            Map.entry(Module.ISA.IA32, 32), Map.entry(Module.ISA.PPC32, 32),
+            Map.entry(Module.ISA.ARM, 32), Map.entry(Module.ISA.X64, 64));
 
         Map<Module.ISA, Endian> endianMap =
-            Map.ofEntries(Map.entry(Module.ISA.PPC32, Endian.BIG),
+            Map.ofEntries(Map.entry(Module.ISA.IA32, Endian.LITTLE),
+                          Map.entry(Module.ISA.PPC32, Endian.BIG),
+                          Map.entry(Module.ISA.ARM, Endian.LITTLE),
                           Map.entry(Module.ISA.X64, Endian.LITTLE));
 
         // IF the file ends with .gtirb, we will proceed, otherwise return an

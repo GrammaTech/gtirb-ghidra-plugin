@@ -42,19 +42,6 @@ RUN wget --progress=bar:force -O /home/testdir/gradle.zip https://services.gradl
     && rm gradle.zip \
     && cd /bin && ln -s /home/testdir/gradle-5.0/bin/gradle
 
-##
-## CGet test scripts
-##
-#RUN cd /workspace \
-#    && git clone https://git.grammatech.com/rewriting/gtirb-ghidra-plugin.git \
-#    && cd /workspace/gtirb-ghidra-plugin \
-#    && git checkout tneale/testdev \
-#    && cp -r /workspace/gtirb-ghidra-plugin/build-plugin /workspace \
-#    && chmod a+x /workspace/build-plugin
-COPY DumpComments.java home/testdir
-COPY helloX64.gtirb home/testdir
-COPY test-import home/testdir
-
 #
 # Clean up
 #

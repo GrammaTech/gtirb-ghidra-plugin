@@ -9,7 +9,7 @@
 DEFAULT_GHIDRA_INSTALL_DIR=/ghidra
 DEFAULT_GHIDRA_PROJECT=/home/testdir/Project
 DEFAULT_GHIDRA_FILE="test_x64.gtirb"
-DEFAULT_GHIDRA_SCRIPT=DumpComments.java
+DEFAULT_GHIDRA_SCRIPT=DumpBookmarks.java
 
 #
 # Allow the test file to be set as a command line argument
@@ -40,7 +40,7 @@ fi
 
 echo ""
 echo " test-import:"
-echo "    Import a file and dump comments to show that import was successful"
+echo "    Import a file, analyze it, and check for errors"
 echo "       Ghidra install dir:  ${GHIDRA_INSTALL_DIR}"
 echo "       Ghidra project:      ${GHIDRA_PROJECT}"
 echo "       Ghidra file:         ${GHIDRA_FILE}"
@@ -49,13 +49,14 @@ echo ""
 #
 # Run ghidra in headless mode
 # - GHIDRA_SCRIPT is supposed to be a script that dump comments
-# - do not run analyzer
 # - allow import to overwrite any program already existing with that name
+# - run analyzer
+# - Dump bookmarks becuase any errors would be show up there.
 HEADLESS_LAUNCH=${GHIDRA_INSTALL_DIR}/support/analyzeHeadless
 PROJECT_LOCATION=`dirname ${GHIDRA_PROJECT}`
 PROJECT_NAME=`basename ${GHIDRA_PROJECT}`
 TESTFILE_NAME=`basename ${GHIDRA_FILE}`
-if ${HEADLESS_LAUNCH} ${PROJECT_LOCATION} ${PROJECT_NAME} -import ${GHIDRA_FILE} -noanalysis -postScript ${GHIDRA_SCRIPT} -overwrite | grep "main of ${TESTFILE_NAME}"; then
+if ${HEADLESS_LAUNCH} ${PROJECT_LOCATION} ${PROJECT_NAME} -import ${GHIDRA_FILE} -postScript ${GHIDRA_SCRIPT} -overwrite | grep "0 error bookmarks"; then
 	exit 0
 else
 	echo "import failed."

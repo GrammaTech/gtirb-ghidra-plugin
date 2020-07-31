@@ -3,14 +3,9 @@
 This repo contains the source for building a Ghidra plugin to handle
 GTIRB files.
 
-A version that handles loading a x86-64 GTIRB file is available in the
-dist directory.  This version loads the bytes, symbols, functions, and
-CFG information available in the GTIRB file, but does not (yet) use
-any other information (e.g., other AuxData tables, symbolic
-expressions).
-
 Some limitations:
- - 64 bit little endian only
+ - Imports GTIRB created from ELF files (only)
+ - Supported architectures are IA32, ARM, X86-64, and PPC32
  - File name must have ".gtirb" suffix (otherwise you will have to
    manually select the GTIRB loader)
  - Plugin is tied to Ghidra version, file name indicates which Ghidra

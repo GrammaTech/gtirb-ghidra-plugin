@@ -9,21 +9,32 @@ build-and-test:
   stage: build-and-test
   script:
   - echo "Building plugin..."
-  - cd /home/testdir
+  # Clone GTIRB repo so you can get the Java API
+  - cd ${TESTDIR}
   - git clone https://git.grammatech.com/rewriting/gtirb.git
-  - cd gtirb
+  # Run the protocol compiler to generate Java classes from proto files
+  - cd ${TESTDIR}/gtirb
   - protoc --java_out=java --proto_path=proto ./proto/*.proto
-  - cd /home/testdir
+  # Run cmake to generate Java class with version information
+  - mkdir ${TESTDIR}/gtirb/build
+  - cd ${TESTDIR}/gtirb/build
+  - cmake ../ -DGTIRB_CXX_API=OFF -DGTIRB_PY_API=OFF -DGTIRB_CL_API=OFF
+  # Clone the plugin repo
+  - cd ${TESTDIR}
   - git clone https://git.grammatech.com/rewriting/gtirb-ghidra-plugin.git
-  - cp -r /home/testdir/gtirb/java/com/grammatech/gtirb /home/testdir/gtirb-ghidra-plugin/Gtirb/src/main/java/com/grammatech
-  - cp /home/testdir/protobuf-java-${PROTOBUF_VERSION}.jar /home/testdir/gtirb-ghidra-plugin/Gtirb/lib
-  - cd /home/testdir/gtirb-ghidra-plugin/Gtirb
+  # Copy in GTIRB Java API and protobuf Java lib
+  - cp -r ${TESTDIR}/gtirb/java/com/grammatech/gtirb ${TESTDIR}/gtirb-ghidra-plugin/Gtirb/src/main/java/com/grammatech
+  - cp ${TESTDIR}/protobuf-java-${PROTOBUF_VERSION}.jar ${TESTDIR}/gtirb-ghidra-plugin/Gtirb/lib
+  # Build the plugin
+  - cd ${TESTDIR}/gtirb-ghidra-plugin/Gtirb
   - gradle
-  - cd /home/testdir/gtirb-ghidra-plugin/Gtirb/dist
+  - cd ${TESTDIR}/gtirb-ghidra-plugin/Gtirb/dist
+  # Install in Ghidra
   - mv *.zip ${GHIDRA_INSTALL_DIR}/Extensions/Ghidra/${GHIDRA_DOWNLOAD_VERSION}_Gtirb.zip
   - cd ${GHIDRA_INSTALL_DIR}/Ghidra/Extensions
   - unzip ../../Extensions/Ghidra/${GHIDRA_DOWNLOAD_VERSION}_Gtirb.zip
-  - cd /home/testdir/gtirb-ghidra-plugin/test
+  # Run test scripts using plugin in headless mode
+  - cd ${TESTDIR}/gtirb-ghidra-plugin/test
   - ./test-import test_x64.gtirb
   - ./test-import test_ia32.gtirb
   - ./test-import test_ppc32.gtirb

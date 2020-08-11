@@ -5,11 +5,13 @@ ENV GHIDRA_DOWNLOAD_SHA ebe3fa4e1afd7d97650990b27777bb78bd0427e8e70c1d0ee042aeb5
 ENV GHIDRA_DOWNLOAD_VERSION 9.1.2_PUBLIC
 ENV PROTOBUF_VERSION 3.11.4
 ENV GHIDRA_INSTALL_DIR /ghidra
+ENV TESTDIR /home/testdir
 
 #
 # Download Ghidra and install it to /ghidra
 #
-RUN apt-get update && apt-get install -y fontconfig libxrender1 libxtst6 libxi6 wget unzip git --no-install-recommends \
+RUN apt-get update && apt-get install -y fontconfig libxrender1 libxtst6 libxi6 wget unzip git \
+    cmake make gcc g++ protobuf-compiler libprotobuf-dev --no-install-recommends \
     && wget --progress=bar:force -O /tmp/ghidra.zip https://www.ghidra-sre.org/${GHIDRA_DOWNLOAD_FILE} \
     && echo "$GHIDRA_DOWNLOAD_SHA /tmp/ghidra.zip" | sha256sum -c - \
     && unzip /tmp/ghidra.zip \
@@ -17,30 +19,21 @@ RUN apt-get update && apt-get install -y fontconfig libxrender1 libxtst6 libxi6 
     && chmod +x ${GHIDRA_INSTALL_DIR}/ghidraRun
 
 #
-# Install protobuf compiler, will need it for Java API
-#
-RUN mkdir /home/testdir \
-    && wget --progress=bar:force -O /home/testdir/protoc \
-      https://repo1.maven.org/maven2/com/google/protobuf/protoc/${PROTOBUF_VERSION}/protoc-${PROTOBUF_VERSION}-linux-x86_64.exe \
-    && chmod u+x /home/testdir/protoc \
-    && cd /bin \
-    && ln -s /home/testdir/protoc
-
-#
 # Get java protobuf jar file, a dependency for the plugin
 #
-RUN wget --progress=bar:force -O /home/testdir/protobuf-java-${PROTOBUF_VERSION}.jar \
+RUN mkdir ${TESTDIR} \
+    && wget --progress=bar:force -O ${TESTDIR}/protobuf-java-${PROTOBUF_VERSION}.jar \
     https://repo1.maven.org/maven2/com/google/protobuf/protobuf-java/${PROTOBUF_VERSION}/protobuf-java-${PROTOBUF_VERSION}.jar
 
 #
 # Get gradle
 #  (Ghdira has a specific requirement that Gradle 5 be used)
 #
-RUN wget --progress=bar:force -O /home/testdir/gradle.zip https://services.gradle.org/distributions/gradle-5.0-bin.zip \
-    && cd /home/testdir \
+RUN wget --progress=bar:force -O ${TESTDIR}/gradle.zip https://services.gradle.org/distributions/gradle-5.0-bin.zip \
+    && cd ${TESTDIR} \
     && unzip gradle.zip \
     && rm gradle.zip \
-    && cd /bin && ln -s /home/testdir/gradle-5.0/bin/gradle
+    && cd /bin && ln -s ${TESTDIR}/gradle-5.0/bin/gradle
 
 #
 # Clean up

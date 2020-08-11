@@ -34,7 +34,7 @@ build-and-test:
   - cd ${GHIDRA_INSTALL_DIR}/Ghidra/Extensions
   - unzip ../../Extensions/Ghidra/${GHIDRA_DOWNLOAD_VERSION}_Gtirb.zip
   # Run test scripts using plugin in headless mode
-  - cd ${TESTDIR}/gtirb-ghidra-plugin/test
+  - cd ${TESTDIR}/gtirb-ghidra-plugin/tests
   - ./test-import test_x64.gtirb
   - ./test-import test_ia32.gtirb
   - ./test-import test_ppc32.gtirb

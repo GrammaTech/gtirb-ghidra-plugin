@@ -57,6 +57,18 @@ public class DynamicSymbol {
     private long size;
     private long addr;
 
+    // An abbreviated constructor so that this class can
+    // also be used to manage externals
+    public DynamicSymbol(String name) {
+        this.setName(name);
+        // this.setType(DynamicSymbolType.values()[info & 0x0f]);
+        // this.setBinding(DynamicSymbolBinding.values()[info >>> 4]);
+        // this.setVisibility(DynamicSymbolVisibility.values()[other & 0x03]);
+        // this.setShndx(shndx);
+        // this.setValue(value);
+        // this.setSize(size);
+    }
+
     public DynamicSymbol(String name, byte info, byte other, short shndx,
                          long value, long size) {
         this.setName(name);

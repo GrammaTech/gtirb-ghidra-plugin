@@ -17,6 +17,7 @@ import ghidra.app.util.*;
 import ghidra.app.util.exporter.Exporter;
 import ghidra.app.util.exporter.ExporterException;
 import ghidra.framework.model.DomainObject;
+import ghidra.program.flatapi.FlatProgramAPI;
 import ghidra.program.model.address.Address;
 import ghidra.program.model.address.AddressIterator;
 import ghidra.program.model.address.AddressSetView;
@@ -24,6 +25,7 @@ import ghidra.program.model.listing.CodeUnit;
 import ghidra.program.model.listing.Listing;
 import ghidra.program.model.listing.Program;
 import ghidra.program.model.mem.Memory;
+import ghidra.program.model.symbol.SymbolIterator;
 import ghidra.util.Msg;
 import ghidra.util.task.TaskMonitor;
 import java.io.File;
@@ -34,19 +36,23 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 
 import com.google.protobuf.ByteString;
 import com.grammatech.gtirb.AuxData;
+import com.grammatech.gtirb.Block;
+import com.grammatech.gtirb.CodeBlock;
+import com.grammatech.gtirb.DataBlock;
 import com.grammatech.gtirb.IR;
 import com.grammatech.gtirb.ProxyBlock;
 import com.grammatech.gtirb.Section;
 import com.grammatech.gtirb.Serialization;
 import com.grammatech.gtirb.Symbol;
 import com.grammatech.gtirb.Module;
-import com.grammatech.gtirb.Block;
+import com.grammatech.gtirb.Node;
 import com.grammatech.gtirb.proto.AuxDataOuterClass;
 import com.grammatech.gtirb.proto.CFGOuterClass;
 import com.grammatech.gtirb.proto.IROuterClass;
@@ -56,19 +62,112 @@ import com.grammatech.gtirb.proto.SectionOuterClass;
 import com.grammatech.gtirb.proto.SymbolOuterClass;
 
 /**
- * TODO: Provide class-level documentation that describes what this exporter
- * does.
+ * An {@link ExportLoader} for exporting programs to GrammaTech Intermediate
+ * Representation for Binaries (GTIRB).
  */
 public class GtirbExporter extends Exporter {
 
+    private Program program;
+    private HashMap<String, String> renamedSymbols = null;
+    // Current renaming algorithm does not allow renaming of symbols
+    //   that share addresses - because they can't be uniquely identified.
+    private ArrayList<Long> sharedAddresses = null;
+    // TODO not currently supporting adding new symbols.
+    // private ArrayList<Symbol> addedSymbols = null;
+
     /** Exporter constructor. */
     public GtirbExporter() {
-
-        // TODO: Name the exporter and associate a file extension with it
-
+        // Name the exporter and associate a file extension with it
         super("GTIRB Exporter", "gtirb", null);
+
+        renamedSymbols = new HashMap<String, String>();
+        sharedAddresses = new ArrayList<Long>();
+        // TODO not currently supporting adding new symbols.
+        // addedSymbols = new ArrayList<Symbol>();
     }
 
+    //
+    // not used.
+    //
+    // This method just does a per-symbol mergeFrom, so that the exported
+    // gtirb symbol is identical to the original.
+    //
+    // export(copy)Symbols
+    //
+    private boolean copySymbols(com.grammatech.gtirb.Module module,
+                                ModuleOuterClass.Module.Builder newModule) {
+        for (Symbol symbol : module.getSymbols()) {
+            SymbolOuterClass.Symbol.Builder newSymbol =
+                SymbolOuterClass.Symbol.newBuilder();
+            SymbolOuterClass.Symbol protoSymbol = symbol.getProtoSymbol();
+            newSymbol.mergeFrom(protoSymbol);
+            newModule.addSymbols(newSymbol);
+        }
+        return true;
+    }
+
+    //
+    // not used.
+    //
+    // I thought I would need to change elf symbol info auxdata
+    // as part of supporting the exporting of symbol name changes.
+    // Turns out the auxdata only references names indirectly, so
+    // nothing to change. Keeping for future reference though.
+    //
+    // exportElfSymbolInfo: Update elfSymbolInfo AuxData
+    // to include name changes and return an builder.
+    //
+    // This method is probably irrelevant, since this AuxData
+    // refers to a symbol by UUID, it would only be needed if
+    // I were _adding_ a symbol. But then I would need to make
+    // up some of this, like ELF Section number.
+    //
+    private AuxDataOuterClass.AuxData.Builder
+    exportElfSymbolInfo(AuxData auxData, Program program, Module module) {
+
+        AuxDataOuterClass.AuxData.Builder newAuxData =
+            AuxDataOuterClass.AuxData.newBuilder();
+        AuxDataOuterClass.AuxData oldAuxData =
+            auxData.getProtoAuxData("elfSymbolInfo");
+        byte[] oldAuxDataBytes = oldAuxData.getData().toByteArray();
+        Serialization oldSerialization = new Serialization(oldAuxDataBytes);
+
+        // Calculate size of byte buffer to create:
+        // - Use size of existing byte buffer, delta by net size change of
+        // renames
+        byte[] newAuxDataBytes = new byte[oldAuxDataBytes.length];
+        Serialization newSerialization = new Serialization(newAuxDataBytes);
+
+        // Serialize the number of symbolInfo items
+        long numSymbolInfo = oldSerialization.getLong();
+        newSerialization.putLong(numSymbolInfo);
+
+        // Iterate through them and set new from old
+        for (int i = 0; i < numSymbolInfo; i++) {
+            // UUID
+            newSerialization.putUuid(oldSerialization.getUuid());
+            // Size (long)
+            newSerialization.putLong(oldSerialization.getLong());
+            // Type (string)
+            newSerialization.putString(oldSerialization.getString());
+            // Binding (string)
+            newSerialization.putString(oldSerialization.getString());
+            // Visibility (string)
+            newSerialization.putString(oldSerialization.getString());
+            // Section number (long)
+            newSerialization.putLong(oldSerialization.getLong());
+        }
+
+        newAuxData.setData(ByteString.copyFrom(newAuxDataBytes));
+        String typeName =
+            "mapping<UUID,tuple<uint64_t,string,string,string,uint64_t>>";
+        newAuxData.setTypeNameBytes(ByteString.copyFromUtf8(typeName));
+        return newAuxData;
+    }
+
+    //
+    // exportSection
+    //
     private SectionOuterClass.Section.Builder exportSection(Section section) {
         SectionOuterClass.Section.Builder newSection =
             SectionOuterClass.Section.newBuilder();
@@ -77,14 +176,9 @@ public class GtirbExporter extends Exporter {
         return (newSection);
     }
 
-    private SymbolOuterClass.Symbol.Builder exportSymbol(Symbol symbol) {
-        SymbolOuterClass.Symbol.Builder newSymbol =
-            SymbolOuterClass.Symbol.newBuilder();
-        SymbolOuterClass.Symbol protoSymbol = symbol.getProtoSymbol();
-        newSymbol.mergeFrom(protoSymbol);
-        return newSymbol;
-    }
-
+    //
+    // exportProxyBlock
+    //
     private ProxyBlockOuterClass.ProxyBlock.Builder
     exportProxyBlock(ProxyBlock proxyBlock) {
         ProxyBlockOuterClass.ProxyBlock.Builder newProxyBlock =
@@ -95,8 +189,12 @@ public class GtirbExporter extends Exporter {
         return newProxyBlock;
     }
 
+    //
+    // exportComments
+    //
     private AuxDataOuterClass.AuxData.Builder
     exportComments(AuxData auxData, Program program, Module module) {
+
         AuxDataOuterClass.AuxData.Builder newAuxData =
             AuxDataOuterClass.AuxData.newBuilder();
         Listing listing = program.getListing();
@@ -149,7 +247,7 @@ public class GtirbExporter extends Exporter {
                 }
                 // Now I need the block address so I can set the displacement to
                 // be the difference between the block start and the comment
-                // address Also need to UUID of the code or data block. THen I
+                // address Also need to UUID of the code or data block. Then I
                 // can write them.
                 Long blockAddress =
                     block.getByteInterval().getAddress() + block.getOffset();
@@ -173,6 +271,201 @@ public class GtirbExporter extends Exporter {
         return newAuxData;
     }
 
+    private Long getSymbolAddress(Symbol symbol) {
+        long symbolOffset = 0;
+        UUID referentUuid = symbol.getReferentByUuid();
+        if (!referentUuid.equals(com.grammatech.gtirb.Util.NIL_UUID)) {
+            Node symbolNode = Node.getByUuid(symbol.getReferentByUuid());
+            // Address here is really offset from image base
+            // Only have address if code or data, anything else stays 0.
+            if (symbolNode instanceof CodeBlock) {
+                CodeBlock codeBlock = (CodeBlock)symbolNode;
+                symbolOffset =
+                    codeBlock.getBlock().getByteInterval().getAddress() +
+                    codeBlock.getOffset();
+            } else if (symbolNode instanceof DataBlock) {
+                DataBlock dataBlock = (DataBlock)symbolNode;
+                symbolOffset =
+                    dataBlock.getBlock().getByteInterval().getAddress() +
+                    dataBlock.getOffset();
+            }
+        }
+        return new Long(symbolOffset);
+    }
+
+    //
+    // exportSymbols
+    //
+    //
+    // This will build proto versions of the entire list of symbols and add
+    // to the module.
+    // Strategy:
+    //  - Start by creatng a hashmap lookup table to match addresses with
+    //    Gtirb symbols.
+    //  - Iterate through the sysmbols in the Ghidra symbol table,
+    //      - Look up each one by address to get the Gtirb-only things, such as
+    //      UUID.
+    //      - Build the new symbol using Symbol.newBuilder()
+    //        using the Ghidra name regardless of whether it matches the Gtirb
+    //        name.
+    //      - Add the new symbol to newModule using addSymbols()
+    //
+    //  - Potential optimization: Could check if Ghidra symbols names match the
+    //    ones imported from Gtirb, as it will be most of the time probably, and
+    //    if they match just do a mergeFrom instead.
+    //  - OR, iterate through GTIRB symbols, use getSymbolAt() to get Ghidra's
+    //    name for that symbol, and use that in place of Gtirb name.
+    //
+    private boolean exportSymbols(com.grammatech.gtirb.Module module,
+                                  ModuleOuterClass.Module.Builder newModule) {
+        //
+        // This routine creates the list of addded and renamed symbols.
+        // If somehow these are not empty, clear them out
+        renamedSymbols.clear();
+        sharedAddresses.clear();
+        // TODO not currently supporting adding new symbols.
+        // addedSymbols.clear();
+
+        //
+        // Get the program image base. All addresses are relative to this.
+        Address imageBase = program.getImageBase();
+        long imageOffset = imageBase.getOffset();
+
+        // Define a null address -
+        // A symbols with this address doesn't really have an address
+        // (externals for instance)
+        Long noAddress = new Long(imageOffset);
+        //
+        // Create a hashmap with all the Gtirb symbols, indexed by address
+        // Add the image base, otherwise you won;t get any matches.
+        //
+        HashMap<Long, Symbol> symbolIndex = new HashMap<>();
+        // Msg.info(this, " ----- Initializing hashmap...");
+        for (Symbol symbol : module.getSymbols()) {
+            // Long symbolAddress = new Long(symbol.getAddress() + imageOffset);
+            Long symbolAddress = getSymbolAddress(symbol) + imageOffset;
+            if (symbolAddress.equals(noAddress)) {
+                // Msg.info(this, " skipping symbol with no address: " +
+                // symbol.getName() + " : " + symbol.getAddress());
+                continue;
+            }
+            if (symbolIndex.containsKey(symbolAddress)) {
+                // Msg.info(this, "Adding " + symbol.getName() + " : " +
+                // String.format(" : %08x", symbolAddress) + " to
+                // sharedAddresses");
+                //        " - rejecting because address is shard by other
+                //        symbols ");
+                // If there is already a symbol add this address,
+                // add the address to the shared address list, no symbol
+                // can be renamed without a unique address
+                sharedAddresses.add(symbolAddress);
+            } else {
+                // Msg.info(this, "Adding " + symbol.getName() + " : " +
+                // String.format(" : %08x", symbolAddress) + " to symbolIndex");
+                symbolIndex.put(symbolAddress, symbol);
+            }
+        }
+        // Msg.info(this, " ----- Initializing done");
+
+        //
+        // Iterate through all the Ghidra symbols, trying to
+        // estabish an address-based match of Ghidra and Gtirb symbols
+        // If a match is found, and the names are different, it is a renaming.
+        //
+        SymbolIterator allSymbolIterator =
+            this.program.getSymbolTable().getAllSymbols(true);
+        while (allSymbolIterator.hasNext()) {
+            ghidra.program.model.symbol.Symbol s = allSymbolIterator.next();
+
+            Long symbolAddress = new Long(s.getAddress().getOffset());
+
+            //
+            // Exclusions:
+            // Do not proceed if the Ghidra symbols belongs to these
+            // categories that are not allowed to rename:
+            //  - Externals: Can't allow renaming of externals
+            //  - Dynamics: Labels that Ghidra has and Gtirb does not
+            //                TODO: Should try to export these to gtirb?
+            //                What are they anyway?
+            //  - Thunks: Generally this is a local redirection to a
+            //                library function. Other kinds of thunks are
+            //                possible, may need to revisit this.
+            //  - No Address: Symbols for which no actual address has been
+            //                assigned will have an address of 0 (or imageBase)
+            //                These are not useful symbols to rename.
+            //  - Shared addresses: Only symbols that have a unique
+            //                address can be renamed, until support for UUID
+            ///               has been added.
+            //
+            // Would look better a single compound if?
+            if (s.isExternal()) {
+                continue;
+            } else if (s.isDynamic()) {
+                continue;
+            } else if (s.getSymbolType().toString().equals("Function")) {
+                ghidra.program.model.listing.Function function =
+                    this.program.getListing().getFunctionAt(s.getAddress());
+                if (function.isThunk()) {
+                    continue;
+                }
+            } else if (symbolAddress.equals(noAddress)) {
+                continue;
+            } else if (sharedAddresses.contains(symbolAddress)) {
+                // Msg.info(this, s.getName() + " : " + String.format(" : %08x",
+                // symbolAddress) +
+                //        " - rejecting because address is shard by other
+                //        symbols ");
+                continue;
+            }
+
+            if (symbolIndex.containsKey(symbolAddress)) {
+                //
+                // This symbol matches (by address) a Gtirb symbol, change name
+                // if needed.
+                //
+                Symbol gtirbSymbol = symbolIndex.get(symbolAddress);
+                if (!s.getName().equals(gtirbSymbol.getName())) {
+                    // Msg.info(this, s.getName() + " was called " +
+                    // gtirbSymbol.getName() + ", adding to rename list");
+                    renamedSymbols.put(gtirbSymbol.getName(), s.getName());
+                }
+            } else {
+                Msg.info(this, s.getName() + " : " + s.getSymbolType() +
+                                   String.format(" @ %08x", symbolAddress) +
+                                   " does not match any Gtirb symbol.");
+            }
+        }
+        //
+        //  Iterate through gtirb symbols, changing names if needed.
+        for (Symbol symbol : module.getSymbols()) {
+            // Msg.info(this, " exporting " + symbol.getName());
+            SymbolOuterClass.Symbol.Builder newSymbol =
+                SymbolOuterClass.Symbol.newBuilder();
+            SymbolOuterClass.Symbol protoSymbol = symbol.getProtoSymbol();
+            newSymbol.mergeFrom(protoSymbol);
+            if (renamedSymbols.containsKey(symbol.getName())) {
+                String oldName = symbol.getName();
+                String newName = renamedSymbols.get(symbol.getName());
+                // Msg.info(this, " RENAMING " + symbol.getName() + " to " +
+                // renamedSymbols.get(symbol.getName()));
+                if (oldName.startsWith(".") &&
+                    oldName.substring(1).equals(newName)) {
+                    // Msg.info(this, " not renaming, it would just remove the
+                    // initial period.");
+                    ;
+                } else {
+                    Msg.info(this, " Renaming " + oldName + " to " + newName);
+                    newSymbol.setName(renamedSymbols.get(symbol.getName()));
+                }
+            }
+            newModule.addSymbols(newSymbol);
+        }
+        return true;
+    }
+
+    //
+    // exportAuxData
+    //
     private AuxDataOuterClass.AuxData.Builder exportAuxData(AuxData auxData,
                                                             String auxDataType,
                                                             Program program,
@@ -192,6 +485,9 @@ public class GtirbExporter extends Exporter {
         return newAuxData;
     }
 
+    //
+    // exportModule()
+    //
     // Have to avoid confusion with java.io.Module
     private ModuleOuterClass.Module.Builder
     exportModule(com.grammatech.gtirb.Module module, Program program) {
@@ -207,23 +503,27 @@ public class GtirbExporter extends Exporter {
         newModule.setEntryPoint(protoModule.getEntryPoint());
         newModule.setBinaryPath(protoModule.getBinaryPath());
 
+        // export sections
         for (Section section : module.getSections()) {
             SectionOuterClass.Section.Builder newSection =
                 exportSection(section);
             newModule.addSections(newSection);
         }
 
-        for (Symbol symbol : module.getSymbols()) {
-            SymbolOuterClass.Symbol.Builder newSymbol = exportSymbol(symbol);
-            newModule.addSymbols(newSymbol);
+        // export symbols
+        if (!exportSymbols(module, newModule)) {
+            Msg.error(this, "Error exporting symbols");
         }
 
+        // export proxy blocks
         for (ProxyBlock proxyBlock : module.getProxyBlockList()) {
             ProxyBlockOuterClass.ProxyBlock.Builder newProxyBlock =
                 exportProxyBlock(proxyBlock);
             newModule.addProxies(newProxyBlock);
         }
 
+        // export comments
+        //
         // Special handling of comments here because that is first to be
         // implemented If auxdata (in original gtirb) already had comments,
         // comments will get exported But if it didn't (for example, added by
@@ -249,6 +549,9 @@ public class GtirbExporter extends Exporter {
         return newModule;
     }
 
+    //
+    // exportProgramToFile
+    //
     private boolean exportProgramToFile(Program program, IR ir,
                                         OutputStream fileOut) {
         //
@@ -265,7 +568,8 @@ public class GtirbExporter extends Exporter {
         // Add the module
         ModuleOuterClass.Module.Builder newModule =
             exportModule(ir.getModule(), program);
-        newModule.setName("module0");
+        // Keep the same module name
+        newModule.setName(ir.getModule().getName());
         newIR.addModules(newModule);
 
         // Add the CFG
@@ -281,6 +585,9 @@ public class GtirbExporter extends Exporter {
         return true;
     }
 
+    //
+    // export
+    //
     @Override
     public boolean export(File file, DomainObject domainObj,
                           AddressSetView addrSet, TaskMonitor monitor)
@@ -293,9 +600,9 @@ public class GtirbExporter extends Exporter {
                           domainObj.getClass().getName());
             return false;
         }
+        this.program = (Program)domainObj;
 
         // 2. From program get file and open it
-        Program program = (Program)domainObj;
         String fileName = program.getExecutablePath();
         //
         // TODO: May want to reject an attempt to export a file that was not
@@ -307,10 +614,10 @@ public class GtirbExporter extends Exporter {
         // It could be that the IR loaded by the loader is still around
         // (a load followed by an export for instance). If so, use it.
         // Otherwise we need to load the file.
-        // THIS SHOULD BE REMEDIED WHEN THE EXPORTED IS COMPLETE
-        // AT THAT POINT ALL INFO WILL BE COMING FROM THE PROGRAM
-        // The proto IR is only needed here to copy from, for those
-        // parts that do not yet have a exporter implemented.
+        //
+        // NOTE This means the original (GTIRB) file must still be around
+        // for exporting to work.
+        //
         IR ir = GtirbLoader.getIR();
         if (ir == null) {
             File inputFile = new File(fileName);
@@ -321,6 +628,7 @@ public class GtirbExporter extends Exporter {
                 Msg.error(this, "Error opening file" + e);
                 return false;
             }
+            Msg.info(this, " -> IR was null, needed to load file.");
             ir = IR.loadFile(inputStream);
         }
 
@@ -346,6 +654,9 @@ public class GtirbExporter extends Exporter {
         return (this.exportProgramToFile(program, ir, fos));
     }
 
+    //
+    // getOptions
+    //
     @Override
     public List<Option> getOptions(DomainObjectService domainObjectService) {
         List<Option> list = new ArrayList<>();
@@ -357,6 +668,9 @@ public class GtirbExporter extends Exporter {
         return list;
     }
 
+    //
+    // setOptions
+    //
     @Override
     public void setOptions(List<Option> options) throws OptionException {
 

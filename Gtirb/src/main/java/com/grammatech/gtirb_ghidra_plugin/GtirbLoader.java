@@ -28,6 +28,9 @@ import com.grammatech.gtirb.ProxyBlock;
 import com.grammatech.gtirb.Section;
 import com.grammatech.gtirb.Serialization;
 import com.grammatech.gtirb.Symbol;
+import com.grammatech.gtirb.SymbolInfo;
+import com.grammatech.gtirb.Version;
+
 import ghidra.app.util.MemoryBlockUtils;
 import ghidra.app.util.Option;
 import ghidra.app.util.bin.ByteProvider;
@@ -45,8 +48,9 @@ import ghidra.program.model.address.Address;
 import ghidra.program.model.address.AddressOverflowException;
 import ghidra.program.model.address.AddressSet;
 import ghidra.program.model.address.AddressSpace;
-import ghidra.program.model.data.Undefined;
 import ghidra.program.model.data.DataTypeConflictException;
+import ghidra.program.model.data.DataUtilities;
+import ghidra.program.model.data.Undefined;
 import ghidra.program.model.lang.Endian;
 import ghidra.program.model.listing.CodeUnit;
 import ghidra.program.model.listing.Library;
@@ -96,14 +100,30 @@ public class GtirbLoader extends AbstractLibrarySupportLoader {
     private HashMap<String, GtirbFunction> functionMap;
 
     private byte[] dynStrSectionContents;
+
+    // TODO Redo relocations to not include externals
+    private ArrayList<DynamicSymbol> externalSymbols =
+        new ArrayList<DynamicSymbol>();
+
     private ArrayList<DynamicSymbol> dynamicSymbols =
         new ArrayList<DynamicSymbol>();
+
     private ArrayList<ElfRelocation> elfRelocations = new ArrayList<>();
     private long loadOffset;
     private Namespace storageExtern;
     static private IR ir;
 
     public static IR getIR() { return ir; }
+
+    private int getWordSize() {
+        Module module = GtirbLoader.ir.getModule();
+        if ((module.getISA() == Module.ISA.X64) ||
+            (module.getISA() == Module.ISA.ARM64)) {
+            return 8;
+        }
+        return 4;
+    }
+
     //
     // Process an ELF relocation section (section type RELA) according to
     // the Elf64_Rela structure defined in the ABI relocation chapter.
@@ -354,6 +374,38 @@ public class GtirbLoader extends AbstractLibrarySupportLoader {
         }
     }
 
+    private boolean addThunk(DynamicSymbol externalSymbol) {
+        String thunkName = externalSymbol.getName();
+        long thunkAddr = externalSymbol.getAddr();
+        Address ghidraThunkAddr = program.getImageBase().add(thunkAddr);
+        Function function = null;
+        ExternalLocation extLoc;
+
+        try {
+            // create "one-byte" function
+            // Q: Why does elf create these with no name?
+            function = this.listing.createFunction(
+                thunkName, ghidraThunkAddr, new AddressSet(ghidraThunkAddr),
+                SourceType.IMPORTED);
+            extLoc = program.getExternalManager().addExtFunction(
+                Library.UNKNOWN, thunkName, null, SourceType.IMPORTED);
+        } catch (Exception e) {
+            Msg.info(this, "Unable to add thunk: " + thunkName + " " + e);
+            return false;
+        }
+        function.setThunkedFunction(extLoc.getFunction());
+
+        //
+        // Check for known no-returns, they mess up the analysis.
+        if (thunkName.matches("exit")) {
+            function.setNoReturn(true);
+        }
+        if (thunkName.matches("abort")) {
+            function.setNoReturn(true);
+        }
+        return true;
+    }
+
     private boolean addFunction(GtirbFunction function) {
         long start = function.getAddress();
         long end = start + function.getSize();
@@ -387,7 +439,9 @@ public class GtirbLoader extends AbstractLibrarySupportLoader {
             ExternalLocation extLoc;
             String realName = function.getName().replaceFirst("^__thunk_", "");
             try {
-                f = this.listing.createFunction(realName, entryAddress, body,
+                // f = this.listing.createFunction(realName, entryAddress, body,
+                f = this.listing.createFunction(function.getName(),
+                                                entryAddress, body,
                                                 SourceType.IMPORTED);
                 extLoc = program.getExternalManager().addExtFunction(
                     Library.UNKNOWN, realName, null, SourceType.IMPORTED);
@@ -439,6 +493,22 @@ public class GtirbLoader extends AbstractLibrarySupportLoader {
         return true;
     }
 
+    private long getSymbolSize(Symbol symbol) {
+        UUID referentUuid = symbol.getReferentByUuid();
+        if (referentUuid.equals(com.grammatech.gtirb.Util.NIL_UUID)) {
+            return 0;
+        }
+        Node referent = Node.getByUuid(referentUuid);
+        if (referent instanceof CodeBlock) {
+            CodeBlock codeBlock = (CodeBlock)referent;
+            return codeBlock.getSize();
+        } else if (referent instanceof DataBlock) {
+            DataBlock dataBlock = (DataBlock)referent;
+            return dataBlock.getSize();
+        }
+        return 0;
+    }
+
     //
     // Treat a data symbol differently than a code symbol
     // In this case the name doesn't really matter, what matters is
@@ -447,38 +517,66 @@ public class GtirbLoader extends AbstractLibrarySupportLoader {
     private boolean addDataSymbol(Symbol symbol, long symbolAddress,
                                   Namespace namespace) {
         Address symbolFullAddress = program.getImageBase().add(symbolAddress);
-        int length = 1;
+        int size = (int)getSymbolSize(symbol);
+        // Msg.info(this, "adding data symbol " + symbol.getName() + ", size = "
+        // + size);
         try {
-            // Taken from ELF loader:
-            // If it is bigger than 8, just let it go through and create a
-            // single undefined Otherwise this would create an array of
-            // undefined, might get in the way
-            // TODO: how to really handle something bigger.
-            if (length > 8) {
-                length = 1;
-            }
-            if (length == 0) {
-                length = 1;
-            }
-            program.getListing().createData(
-                symbolFullAddress, Undefined.getUndefinedDataType(length));
+            DataUtilities.createData(
+                this.program, symbolFullAddress,
+                Undefined.getUndefinedDataType(size), size, true,
+                DataUtilities.ClearDataMode.CHECK_FOR_SPACE);
         } catch (CodeUnitInsertionException e) {
             Msg.info(this,
                      "possible data markup conflict at " + symbolFullAddress);
         } catch (DataTypeConflictException e) {
             throw new AssertException("unexpected", e);
         }
-        return true;
+        return (addCodeSymbol(symbol, symbolAddress, namespace));
     }
+
+    // replace but keep for comparisons
+    //    //
+    //    // Treat a data symbol differently than a code symbol
+    //    // In this case the name doesn't really matter, what matters is
+    //    // recognizing this as some number, maybe an address, anyway not code.
+    //    //
+    //    private boolean addDataSymbol(Symbol symbol, long symbolAddress,
+    //                                  Namespace namespace) {
+    //        Address symbolFullAddress =
+    //        program.getImageBase().add(symbolAddress); int length = 1; try {
+    //            // Taken from ELF loader:
+    //            // If it is bigger than 8, just let it go through and create a
+    //            // single undefined Otherwise this would create an array of
+    //            // undefined, might get in the way
+    //            // TODO: how to really handle something bigger.
+    //            if (length > 8) {
+    //                length = 1;
+    //            }
+    //            if (length == 0) {
+    //                length = 1;
+    //            }
+    //            program.getListing().createData(
+    //                symbolFullAddress,
+    //                Undefined.getUndefinedDataType(length));
+    //        } catch (CodeUnitInsertionException e) {
+    //            Msg.info(this,
+    //                     "possible data markup conflict at " +
+    //                     symbolFullAddress);
+    //        } catch (DataTypeConflictException e) {
+    //            throw new AssertException("unexpected", e);
+    //        }
+    //        return true;
+    //    }
 
     private long sectionSizeFixups(Section section, byte[] byteIntervalBytes,
                                    long byteIntervalSize) {
-        // Specxtial handling for section sizes:
+        // Special handling for section sizes:
         //  - The .plt.got section consists only of a jump, but ghidra does
         //    not recognize it as non-returning, and the disassembler
         //    tries to continue into bogus bytes. The fixup is to make
         //    sure the function ends at the jump.
         //
+        // TODO TEN WHAT? Is this spupposed to be IA32?
         Module module = GtirbLoader.ir.getModule();
         if ((module.getISA() == Module.ISA.X64) ||
             (module.getISA() == Module.ISA.X64)) {
@@ -590,6 +688,87 @@ public class GtirbLoader extends AbstractLibrarySupportLoader {
         } catch (MemoryAccessException e) {
             Msg.error(this, "Unable to set do relocation " + e);
             return false;
+        }
+        return true;
+    }
+
+    //
+    //  A (gtirb) symbol is considered external if it has no referent,
+    //  or if the referent is a proxy block.
+    //
+    //  - Make a list of all such symbols.
+    //  - Create a block of uninitialized memory equal to the
+    //    size of this list, times word size of current ISA.
+    //  - Give each of the symbols an address in this block
+    //    Now references to the external can point to this address.
+    //
+    private boolean processExternals(ArrayList<Symbol> symbols, long lastAddr) {
+
+        // Must subtract loadOffset, otherwise it is added twice
+        long fakeExternalBlockAddr = ((lastAddr | 7) + 1) - this.loadOffset;
+
+        // collect symbols with no paylod
+        // TODO DynamicSymbol class seems wrongly
+        // named, should rename it. MOVED TO CLASS
+        // ArrayList<DynamicSymbol> externalSymbols =
+        //    new ArrayList<DynamicSymbol>();
+
+        // TODO TEN DO NOT FORGET also needed is
+        // symbols whose referent is a proxy block This
+        // is only adding those without a payload.
+        for (Symbol symbol : symbols) {
+            UUID referentUuid = symbol.getReferentByUuid();
+            if (referentUuid.equals(com.grammatech.gtirb.Util.NIL_UUID)) {
+                // TODO TEN Clean up messages
+                // Msg.info(this, "Adding external
+                // symbol: " + symbol.getName());
+                DynamicSymbol externalSymbol =
+                    new DynamicSymbol(symbol.getName());
+                externalSymbols.add(externalSymbol);
+                continue;
+            }
+
+            Node referent = Node.getByUuid(referentUuid);
+            if (referent == null) {
+                continue;
+            } else if (referent instanceof ProxyBlock) {
+                // TODO TEN Clean up messages
+                // Msg.info(this, "Adding external
+                // symbol: " + symbol.getName());
+                DynamicSymbol externalSymbol =
+                    new DynamicSymbol(symbol.getName());
+                externalSymbols.add(externalSymbol);
+            }
+        }
+        int externBlockSize = this.getWordSize() * externalSymbols.size();
+
+        // now create an uninitialized block at the
+        // right address
+        Memory memory = program.getMemory();
+        try {
+            MemoryBlock block = memory.createUninitializedBlock(
+                "EXTERNAL", program.getImageBase().add(fakeExternalBlockAddr),
+                externBlockSize, false);
+
+            // assume any value in external is
+            // writable.
+            block.setWrite(true);
+            block.setSourceName("GTIRB Loader");
+            block.setComment(
+                "NOTE: This block is artificial and is used to make relocations work correctly");
+        } catch (Exception e) {
+            Msg.error(this, "Error creating external memory block: " + e);
+            return false;
+        }
+
+        // now you need to parse the addresses out in a
+        // way that can be used to set up thunks DO NOT
+        // WORRY ABOUT FUNCTIONS STARTING WITH "thunk_"
+        //  this is separate from that,
+        long thunkAddr = fakeExternalBlockAddr;
+        for (DynamicSymbol externalSymbol : externalSymbols) {
+            externalSymbol.setAddr(thunkAddr);
+            thunkAddr += this.getWordSize();
         }
         return true;
     }
@@ -726,6 +905,7 @@ public class GtirbLoader extends AbstractLibrarySupportLoader {
         return true;
     }
 
+    //
     // Process symbol information
     //
     // A symbol is a label which also has an address, a symbol type and a source
@@ -733,24 +913,92 @@ public class GtirbLoader extends AbstractLibrarySupportLoader {
     // the addresses come from the gtirb referent UUID. See the gtirb data
     // symbols example code.
     //
-    private boolean processSymbols(ArrayList<Symbol> symbols) {
+    private boolean processSymbols(Module module) {
 
+        ArrayList<Symbol> symbols = module.getSymbols();
         boolean isFakeExternal = false;
 
+        Map<UUID, SymbolInfo> elfSymbolInfo =
+            module.getAuxData().getElfSymbolInfo();
+
+        //
         // Create namespace for external symbols
+        //
+        // NOT USED:
+        //
+        // Currently (8/14/20) this namespace is getting created but not
+        // actually used anywhere, because
+        // (1) Relocations are actually ony processed for X64 binaries
+        //     I haven't looked at processing other ISAs yet.
+        // (2) Anyway, relocation-related sections (e.g. dynsym and rela_dyn)
+        //     are now empty, they have byte intervals with byte arrays,
+        //     and those byte arrays are of length 0.
+        //
         SymbolTable symbolTable = program.getSymbolTable();
         try {
             this.storageExtern = symbolTable.createNameSpace(
-                // TODO FIXME TEN 7/29/20
-                // null, Library.UNKNOWN, SourceType.IMPORTED);
                 null, "<RELOC-REFS>", SourceType.IMPORTED);
         } catch (Exception e) {
             Msg.error(this, "Error creating external namespace: " + e);
             return false;
         }
 
+        //
+        // The rest of this procedure is iterating through the symbols
+        // that came from the gtirb file.
+        //
         for (Symbol symbol : symbols) {
 
+            //
+            // EXTERNALS:
+            //
+            // Check whether this is in the list of known externals
+            // The list of externals came from calling processExternals()
+            //
+            boolean isExternal = false;
+            for (DynamicSymbol externalSymbol : this.externalSymbols) {
+                if (externalSymbol.getName().equals(symbol.getName())) {
+                    isExternal = true;
+                    // Before adding a thunk, make sure it is an undefined
+                    // symbol, not, for instance a file name
+                    boolean okToThunk = true;
+                    // TODO TEN Offload this to a function?
+                    if (elfSymbolInfo != null) {
+                        for (Map.Entry<UUID, SymbolInfo> entry :
+                             elfSymbolInfo.entrySet()) {
+                            UUID symbolUuid = entry.getKey();
+                            Node symbolNode = Node.getByUuid(symbolUuid);
+                            if (symbolNode instanceof Symbol) {
+                                Symbol aSymbol = (Symbol)symbolNode;
+                                if (aSymbol.getName().equals(
+                                        symbol.getName())) {
+                                    // OK this symbol matches the symbol info of
+                                    // this entry
+                                    SymbolInfo symbolInfo = entry.getValue();
+                                    if (symbolInfo.getType().equals("FILE")) {
+                                        // TODO TEN Probably don't need this
+                                        // Msg.info(this, "not thunking " +
+                                        //    symbol.getName() +
+                                        //    " because it is FILE");
+                                        okToThunk = false;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    if (okToThunk) {
+                        addThunk(externalSymbol);
+                    }
+                    break;
+                }
+            }
+            if (isExternal) {
+                continue;
+            }
+
+            //
+            // FUNCTIONS:
+            //
             // If this is a function, add it to the program
             if (functionMap.containsKey(symbol.getName())) {
                 GtirbFunction function = functionMap.get(symbol.getName());
@@ -758,34 +1006,50 @@ public class GtirbLoader extends AbstractLibrarySupportLoader {
                 continue;
             }
 
+            // skip this altogether for now.
+            // when reenabling, make sure no redundant processing is going on
+            // here.
+            //
+            // DYNAMIC SYMBOLS:
+            //
+            // NOT USED - same as "Create namesapce for eternal symbols".
+            //
             // If no payload, search the fake externals list for an assigned
             // address
             UUID referentUuid = symbol.getReferentByUuid();
-            if (referentUuid.equals(com.grammatech.gtirb.Util.NIL_UUID)) {
-                for (DynamicSymbol dynamicSymbol : this.dynamicSymbols) {
-                    if (dynamicSymbol.getName().equals(symbol.getName())) {
-                        // Add fakeExternal symbol
-                        long symbolOffset =
-                            dynamicSymbol.getAddr() - this.loadOffset;
-                        addCodeSymbol(symbol, symbolOffset, this.storageExtern);
-                        isFakeExternal = true;
-                        break;
+            if (false) {
+                if (referentUuid.equals(com.grammatech.gtirb.Util.NIL_UUID)) {
+                    for (DynamicSymbol dynamicSymbol : this.dynamicSymbols) {
+                        if (dynamicSymbol.getName().equals(symbol.getName())) {
+                            // Add fakeExternal symbol
+                            long symbolOffset =
+                                dynamicSymbol.getAddr() - this.loadOffset;
+                            addCodeSymbol(symbol, symbolOffset,
+                                          this.storageExtern);
+                            isFakeExternal = true;
+                            break;
+                        }
                     }
-                }
-                if (isFakeExternal == false) {
-                    if (functionMap.containsKey("__thunk_" +
-                                                symbol.getName())) {
-                    } else {
-                        // Not a function, external reference, or relocated
-                        // symbol. This might be a sign of a problem.
-                        Msg.info(
-                            this,
-                            "Symbol has no referrent and is not external, could not determine address: " +
-                                symbol.getName());
+                    if (isFakeExternal == false) {
+                        if (functionMap.containsKey("__thunk_" +
+                                                    symbol.getName())) {
+                        } else {
+                            // Not a function, external reference, or relocated
+                            // symbol. This might be a sign of a problem.
+                            Msg.info(
+                                this,
+                                "Symbol has no referrent and is not external, could not determine address: " +
+                                    symbol.getName());
+                        }
                     }
+                    continue;
                 }
-                continue;
             }
+
+            //
+            // Process according to referent:
+            //
+            // -
             Node referent = Node.getByUuid(referentUuid);
             if (referent == null) {
                 continue;
@@ -801,20 +1065,27 @@ public class GtirbLoader extends AbstractLibrarySupportLoader {
                     dataBlock.getBlock().getByteInterval().getAddress() +
                     dataBlock.getOffset();
                 addDataSymbol(symbol, symbolOffset, null);
-            } else {
-                for (DynamicSymbol dynamicSymbol : this.dynamicSymbols) {
-                    if (dynamicSymbol.getName().equals(symbol.getName())) {
-                        long symbolOffset =
-                            dynamicSymbol.getAddr() - this.loadOffset;
-                        addCodeSymbol(symbol, symbolOffset, this.storageExtern);
-                        isFakeExternal = true;
-                        break;
-                    }
-                }
-                if (isFakeExternal == false) {
-                    Msg.info(this, "Unable to determine symbol address: " +
-                                       symbol.getName());
-                }
+                //
+                // Again, this is not happening currently, as no relocations are
+                // processed so the dynamicSymbols list is empty!
+                //
+                // Commenting out so that no ill side-effects are happening.
+                //
+                //} else {
+                //    for (DynamicSymbol dynamicSymbol : this.dynamicSymbols) {
+                //        if (dynamicSymbol.getName().equals(symbol.getName()))
+                //        {
+                //            long symbolOffset =
+                //                dynamicSymbol.getAddr() - this.loadOffset;
+                //            addCodeSymbol(symbol, symbolOffset,
+                //            this.storageExtern); isFakeExternal = true; break;
+                //        }
+                //    }
+                //    if (isFakeExternal == false) {
+                //        Msg.info(this, "Unable to determine symbol address: "
+                //        +
+                //                           symbol.getName());
+                //    }
             }
         }
         return true;
@@ -868,17 +1139,20 @@ public class GtirbLoader extends AbstractLibrarySupportLoader {
         // Map supported GTIRB ISAs to ELF e_machine value
         Map<Module.ISA, String> machineMap = Map.ofEntries(
             Map.entry(Module.ISA.IA32, "3"), Map.entry(Module.ISA.PPC32, "20"),
-            Map.entry(Module.ISA.ARM, "40"), Map.entry(Module.ISA.X64, "62"));
+            Map.entry(Module.ISA.ARM, "40"), Map.entry(Module.ISA.X64, "62"),
+            Map.entry(Module.ISA.ARM64, "183"));
 
         Map<Module.ISA, Integer> sizeMap = Map.ofEntries(
             Map.entry(Module.ISA.IA32, 32), Map.entry(Module.ISA.PPC32, 32),
-            Map.entry(Module.ISA.ARM, 32), Map.entry(Module.ISA.X64, 64));
+            Map.entry(Module.ISA.ARM, 32), Map.entry(Module.ISA.X64, 64),
+            Map.entry(Module.ISA.ARM64, 64));
 
         Map<Module.ISA, Endian> endianMap =
             Map.ofEntries(Map.entry(Module.ISA.IA32, Endian.LITTLE),
                           Map.entry(Module.ISA.PPC32, Endian.BIG),
                           Map.entry(Module.ISA.ARM, Endian.LITTLE),
-                          Map.entry(Module.ISA.X64, Endian.LITTLE));
+                          Map.entry(Module.ISA.X64, Endian.LITTLE),
+                          Map.entry(Module.ISA.ARM64, Endian.LITTLE));
 
         // IF the file ends with .gtirb, we will proceed, otherwise return an
         // empty list
@@ -890,13 +1164,9 @@ public class GtirbLoader extends AbstractLibrarySupportLoader {
         //        and put in list
         String path = provider.getAbsolutePath();
         if (path.endsWith(GtirbConstants.GTIRB_EXTENSION)) {
+
             //
             // Load the GTIRB file into the IR
-            // TODO: Make IR a class level object so that it won't have to be
-            // re-loaded later
-            //    (OR come up with a shortcut way of getting ISA and FileFormat
-            //    so
-            // that loading isn't needed here)
             //
             InputStream fileIn = provider.getInputStream(0);
             GtirbLoader.ir = IR.loadFile(fileIn);
@@ -904,37 +1174,46 @@ public class GtirbLoader extends AbstractLibrarySupportLoader {
                 Msg.error(this, "GTIRB file load failed.");
             } else {
 
+                //
+                // Check that the version of this file matches the
+                // version that the API was built with
+                int fileVersion = GtirbLoader.ir.getVersion();
+                int thisVersion = Version.gtirbProtobufVersion;
+                if (fileVersion != thisVersion) {
+                    Msg.error(this, "GTIRB file import failed, GTIRB version " +
+                                        fileVersion +
+                                        " does not match expected version (" +
+                                        thisVersion + ").");
+                    return null;
+                }
                 Module module = GtirbLoader.ir.getModule();
                 if (module.getFileFormat() != Module.FileFormat.ELF) {
                     Msg.error(
                         this,
                         "GTIRB file import failed (does not appear to be an ELF file).");
-                } else {
+                    return null;
+                }
+                if (machineMap.containsKey(module.getISA())) {
+                    List<QueryResult> results = QueryOpinionService.query(
+                        ElfLoader.ELF_NAME, machineMap.get(module.getISA()),
+                        "0");
 
-                    if (machineMap.containsKey(module.getISA())) {
-                        List<QueryResult> results = QueryOpinionService.query(
-                            ElfLoader.ELF_NAME, machineMap.get(module.getISA()),
-                            "0");
+                    for (QueryResult result : results) {
+                        boolean add = true;
 
-                        for (QueryResult result : results) {
-                            boolean add = true;
+                        // Check word size
+                        if (sizeMap.get(module.getISA()) !=
+                            result.pair.getLanguageDescription().getSize()) {
+                            add = false;
+                        }
+                        // Check endian
+                        if (endianMap.get(module.getISA()) !=
+                            result.pair.getLanguageDescription().getEndian()) {
+                            add = false;
+                        }
 
-                            // Check word size
-                            if (sizeMap.get(module.getISA()) !=
-                                result.pair.getLanguageDescription()
-                                    .getSize()) {
-                                add = false;
-                            }
-                            // Check endian
-                            if (endianMap.get(module.getISA()) !=
-                                result.pair.getLanguageDescription()
-                                    .getEndian()) {
-                                add = false;
-                            }
-
-                            if (add) {
-                                loadSpecs.add(new LoadSpec(this, 0, result));
-                            }
+                        if (add) {
+                            loadSpecs.add(new LoadSpec(this, 0, result));
                         }
                     }
                 }
@@ -961,6 +1240,8 @@ public class GtirbLoader extends AbstractLibrarySupportLoader {
         this.listing = program.getListing();
         this.options = options;
         this.monitor = monitor;
+
+        Msg.info(this, "GTIRB Loader version " + Version.gtirbApiVersion);
 
         //
         // Load the GTIRB file into the IR
@@ -991,7 +1272,7 @@ public class GtirbLoader extends AbstractLibrarySupportLoader {
             // This is generally a list with only one item. If there are
             // multiple the last one is used.
             for (String binaryType : binaryTypeList) {
-                Msg.info(this, "Module type:    " + binaryType);
+                Msg.info(this, "Module type: " + binaryType);
                 elfFileType = binaryType;
             }
         } else {
@@ -1069,16 +1350,26 @@ public class GtirbLoader extends AbstractLibrarySupportLoader {
             return;
         }
 
+        // TODO TEN This is broken since dynsym has no bytes.
+        // TODO There MUST be one and only one external block
+        //        // Process relocations
+        //        monitor.setMessage("Processing relocations...");
+        //        if (!processRelocations(sections, maxAddress + 8, monitor,
+        //        log)) {
+        //            Msg.error(this, "Failure processing relocations.");
+        //            return;
+        //        }
         // Process relocations
-        monitor.setMessage("Processing relocations...");
-        if (!processRelocations(sections, maxAddress + 8, monitor, log)) {
-            Msg.error(this, "Failure processing relocations.");
+        monitor.setMessage("Processing externals...");
+        if (!processExternals(module.getSymbols(), maxAddress)) {
+            Msg.error(this, "Failure processing externals.");
             return;
         }
 
         // Process symbol information
         monitor.setMessage("Initializing symbol table...");
-        if (!processSymbols(module.getSymbols())) {
+        // if (!processSymbols(module.getSymbols())) {
+        if (!processSymbols(module)) {
             Msg.error(this, "Failure processing symbols.");
             return;
         }
@@ -1126,6 +1417,41 @@ public class GtirbLoader extends AbstractLibrarySupportLoader {
                     ghidraAddress, CodeUnit.PRE_COMMENT, entry.getValue());
             }
         }
+
+        //
+        // Store parts of the original IR as files so that they can be
+        // accessed by the exporter.
+        //
+        // 1. Cast (somehow) the content as a DomainObject
+        // 2.
+        //        ghidra.framework.model.DomainFolder root =
+        //        getProjectRootFolder();
+        // GhidraState state = getState();
+        // java.io.File projectDir = projectLocator.getProjectDir();
+        String ext =
+            ghidra.framework.model.ProjectLocator.getProjectDirExtension();
+        //        String location =
+        //        ghidra.framework.model.ProjectLocator.getLocation();
+        //        java.io.File ext =
+        //        ghidra.framework.model.ProjectLocator.getProjectDirExtension();
+        //        Project project getProject();
+        //        ProjectLocator projectLocator = getProjectLocator();
+        ghidra.framework.model.Project project =
+            ghidra.framework.main.AppInfo.getActiveProject();
+        String projectName = project.getName();
+        Msg.info(this, "Project name: " + projectName);
+        String programPathname = program.getDomainFile().getPathname();
+        Msg.info(this, "Program pathname: " + programPathname);
+        String executablePathname = program.getExecutablePath();
+        Msg.info(this, "Executable pathname: " + executablePathname);
+        ghidra.framework.model.ProjectLocator projectLocator =
+            project.getProjectLocator();
+        String projectLocation = projectLocator.getLocation();
+        Msg.info(this, "Project location: " + projectLocation);
+
+        java.io.File auxDataBak;
+        String AUX_DATA_BAK = "~auxdata.bak";
+        ghidra.framework.store.local.LocalFileSystem fs;
     }
 
     @Override

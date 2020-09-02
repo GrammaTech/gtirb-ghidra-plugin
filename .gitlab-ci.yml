@@ -19,11 +19,14 @@ build-and-test:
   - mkdir ${TESTDIR}/gtirb/build
   - cd ${TESTDIR}/gtirb/build
   - cmake ../ -DGTIRB_CXX_API=OFF -DGTIRB_PY_API=OFF -DGTIRB_CL_API=OFF
+  - cd ${TESTDIR}/gtirb/build/java
+  - make
   # Clone the plugin repo
   - cd ${TESTDIR}
   - git clone https://git.grammatech.com/rewriting/gtirb-ghidra-plugin.git
   # Copy in GTIRB Java API and protobuf Java lib
-  - cp -r ${TESTDIR}/gtirb/java/com/grammatech/gtirb ${TESTDIR}/gtirb-ghidra-plugin/Gtirb/src/main/java/com/grammatech
+  #- cp -r ${TESTDIR}/gtirb/java/com/grammatech/gtirb ${TESTDIR}/gtirb-ghidra-plugin/Gtirb/src/main/java/com/grammatech
+  - cp -r ${TESTDIR}/gtirb/build/java/com/grammatech/gtirb ${TESTDIR}/gtirb-ghidra-plugin/Gtirb/src/main/java/com/grammatech
   - cp ${TESTDIR}/protobuf-java-${PROTOBUF_VERSION}.jar ${TESTDIR}/gtirb-ghidra-plugin/Gtirb/lib
   # Build the plugin
   - cd ${TESTDIR}/gtirb-ghidra-plugin/Gtirb

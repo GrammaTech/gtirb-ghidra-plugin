@@ -1368,7 +1368,6 @@ public class GtirbLoader extends AbstractLibrarySupportLoader {
 
         // Process symbol information
         monitor.setMessage("Initializing symbol table...");
-        // if (!processSymbols(module.getSymbols())) {
         if (!processSymbols(module)) {
             Msg.error(this, "Failure processing symbols.");
             return;
@@ -1418,40 +1417,49 @@ public class GtirbLoader extends AbstractLibrarySupportLoader {
             }
         }
 
+        // Experiment with finding a place to put GTIRB ifno that does not
+        // otherwise get stored in the program - for example UUIDs
         //
-        // Store parts of the original IR as files so that they can be
-        // accessed by the exporter.
+        // This might be addressed by the Saveable class.
         //
-        // 1. Cast (somehow) the content as a DomainObject
-        // 2.
-        //        ghidra.framework.model.DomainFolder root =
-        //        getProjectRootFolder();
-        // GhidraState state = getState();
-        // java.io.File projectDir = projectLocator.getProjectDir();
-        String ext =
-            ghidra.framework.model.ProjectLocator.getProjectDirExtension();
-        //        String location =
-        //        ghidra.framework.model.ProjectLocator.getLocation();
-        //        java.io.File ext =
+        // Commenting this all out for now.
+        // NOTE something about the following code causes an exception when
+        // running headless.
+        //        // Store parts of the original IR as files so that they can be
+        //        // accessed by the exporter.
+        //        //
+        //        // 1. Cast (somehow) the content as a DomainObject
+        //        // 2.
+        //        //        ghidra.framework.model.DomainFolder root =
+        //        //        getProjectRootFolder();
+        //        // GhidraState state = getState();
+        //        // java.io.File projectDir = projectLocator.getProjectDir();
+        //        String ext =
+        //            ghidra.framework.model.ProjectLocator.getProjectDirExtension();
+        //        //        String location =
+        //        //        ghidra.framework.model.ProjectLocator.getLocation();
+        //        //        java.io.File ext =
+        //        //
         //        ghidra.framework.model.ProjectLocator.getProjectDirExtension();
-        //        Project project getProject();
-        //        ProjectLocator projectLocator = getProjectLocator();
-        ghidra.framework.model.Project project =
-            ghidra.framework.main.AppInfo.getActiveProject();
-        String projectName = project.getName();
-        Msg.info(this, "Project name: " + projectName);
-        String programPathname = program.getDomainFile().getPathname();
-        Msg.info(this, "Program pathname: " + programPathname);
-        String executablePathname = program.getExecutablePath();
-        Msg.info(this, "Executable pathname: " + executablePathname);
-        ghidra.framework.model.ProjectLocator projectLocator =
-            project.getProjectLocator();
-        String projectLocation = projectLocator.getLocation();
-        Msg.info(this, "Project location: " + projectLocation);
-
-        java.io.File auxDataBak;
-        String AUX_DATA_BAK = "~auxdata.bak";
-        ghidra.framework.store.local.LocalFileSystem fs;
+        //        //        Project project getProject();
+        //        //        ProjectLocator projectLocator = getProjectLocator();
+        //        ghidra.framework.model.Project project =
+        //            ghidra.framework.main.AppInfo.getActiveProject();
+        //        String projectName = project.getName();
+        //        Msg.info(this, "Project name: " + projectName);
+        //        String programPathname =
+        //        program.getDomainFile().getPathname(); Msg.info(this, "Program
+        //        pathname: " + programPathname); String executablePathname =
+        //        program.getExecutablePath(); Msg.info(this, "Executable
+        //        pathname: " + executablePathname);
+        //        ghidra.framework.model.ProjectLocator projectLocator =
+        //            project.getProjectLocator();
+        //        String projectLocation = projectLocator.getLocation();
+        //        Msg.info(this, "Project location: " + projectLocation);
+        //
+        //        java.io.File auxDataBak;
+        //        String AUX_DATA_BAK = "~auxdata.bak";
+        //        ghidra.framework.store.local.LocalFileSystem fs;
     }
 
     @Override

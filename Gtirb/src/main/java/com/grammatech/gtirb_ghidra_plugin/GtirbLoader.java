@@ -1091,6 +1091,7 @@ public class GtirbLoader extends AbstractLibrarySupportLoader {
         return true;
     }
 
+    // Should be moved to Util or somewhere that it can be shared.
     //
     // Get the address (offset from load address) of the block
     // with the given UUID.

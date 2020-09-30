@@ -13,21 +13,6 @@
  */
 package com.grammatech.gtirb_ghidra_plugin;
 
-import ghidra.app.util.*;
-import ghidra.app.util.exporter.Exporter;
-import ghidra.app.util.exporter.ExporterException;
-import ghidra.framework.model.DomainObject;
-import ghidra.program.flatapi.FlatProgramAPI;
-import ghidra.program.model.address.Address;
-import ghidra.program.model.address.AddressIterator;
-import ghidra.program.model.address.AddressSetView;
-import ghidra.program.model.listing.CodeUnit;
-import ghidra.program.model.listing.Listing;
-import ghidra.program.model.listing.Program;
-import ghidra.program.model.mem.Memory;
-import ghidra.program.model.symbol.SymbolIterator;
-import ghidra.util.Msg;
-import ghidra.util.task.TaskMonitor;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
@@ -44,15 +29,20 @@ import java.util.UUID;
 import com.google.protobuf.ByteString;
 import com.grammatech.gtirb.AuxData;
 import com.grammatech.gtirb.Block;
-import com.grammatech.gtirb.CodeBlock;
+import com.grammatech.gtirb.ByteInterval;
+// NOTE: The name "CodeBlock" is used by both Ghidra and GTIRB, 
+//       by commenting out this import I am choosing to import 
+//       Ghidra CodeBlocks only, and so have to use full path 
+//       when referring to GTIRB CodeBlocks.
+//import com.grammatech.gtirb.CodeBlock;
 import com.grammatech.gtirb.DataBlock;
 import com.grammatech.gtirb.IR;
+import com.grammatech.gtirb.Module;
+import com.grammatech.gtirb.Node;
 import com.grammatech.gtirb.ProxyBlock;
 import com.grammatech.gtirb.Section;
 import com.grammatech.gtirb.Serialization;
 import com.grammatech.gtirb.Symbol;
-import com.grammatech.gtirb.Module;
-import com.grammatech.gtirb.Node;
 import com.grammatech.gtirb.proto.AuxDataOuterClass;
 import com.grammatech.gtirb.proto.CFGOuterClass;
 import com.grammatech.gtirb.proto.IROuterClass;
@@ -61,19 +51,69 @@ import com.grammatech.gtirb.proto.ProxyBlockOuterClass;
 import com.grammatech.gtirb.proto.SectionOuterClass;
 import com.grammatech.gtirb.proto.SymbolOuterClass;
 
+import ghidra.app.util.DomainObjectService;
+import ghidra.app.util.Option;
+import ghidra.app.util.OptionException;
+import ghidra.app.util.exporter.Exporter;
+import ghidra.app.util.exporter.ExporterException;
+import ghidra.framework.model.DomainObject;
+import ghidra.program.model.address.Address;
+import ghidra.program.model.address.AddressIterator;
+import ghidra.program.model.address.AddressSetView;
+import ghidra.program.model.block.BasicBlockModel;
+import ghidra.program.model.block.CodeBlock;
+import ghidra.program.model.block.CodeBlockIterator;
+import ghidra.program.model.listing.CodeUnit;
+import ghidra.program.model.listing.Listing;
+import ghidra.program.model.listing.Program;
+import ghidra.program.model.mem.Memory;
+import ghidra.program.model.symbol.Reference;
+import ghidra.program.model.symbol.ReferenceManager;
+import ghidra.program.model.symbol.SymbolIterator;
+import ghidra.util.Msg;
+import ghidra.util.task.TaskMonitor;
+
 /**
  * An {@link ExportLoader} for exporting programs to GrammaTech Intermediate
  * Representation for Binaries (GTIRB).
  */
 public class GtirbExporter extends Exporter {
 
+    //
+    // Embedded class to represent edges 
+    // (but "Edge" has already been used)
+    private class Flow<S,T> {
+
+        private final S source;
+        private final T target;
+
+        public Flow(S source, T target) {
+            this.source = source;
+            this.target = target;
+        }
+
+        public S getSource() { return source; }
+        public T getTarget() { return target; }
+
+        @Override
+        public int hashCode() { return source.hashCode() ^ target.hashCode(); }
+
+        @Override
+        public boolean equals(Object a) {
+            if (!(a instanceof Flow)) {
+                return false;
+            }
+            Flow<?, ?> aflow = (Flow<?, ?>) a;
+            return (this.source.equals(aflow.getSource()) &&
+                    this.target.equals(aflow.getTarget()));
+        }
+    }
+    
     private Program program;
     private HashMap<String, String> renamedSymbols = null;
-    // Current renaming algorithm does not allow renaming of symbols
-    //   that share addresses - because they can't be uniquely identified.
     private ArrayList<Long> sharedAddresses = null;
-    // TODO not currently supporting adding new symbols.
-    // private ArrayList<Symbol> addedSymbols = null;
+    private HashMap<Long, UUID> addressToBlock = null;
+    private boolean enableDebugMessages = false;
 
     /** Exporter constructor. */
     public GtirbExporter() {
@@ -81,88 +121,8 @@ public class GtirbExporter extends Exporter {
         super("GTIRB Exporter", "gtirb", null);
 
         renamedSymbols = new HashMap<String, String>();
+        addressToBlock = new HashMap<Long, UUID>();
         sharedAddresses = new ArrayList<Long>();
-        // TODO not currently supporting adding new symbols.
-        // addedSymbols = new ArrayList<Symbol>();
-    }
-
-    //
-    // not used.
-    //
-    // This method just does a per-symbol mergeFrom, so that the exported
-    // gtirb symbol is identical to the original.
-    //
-    // export(copy)Symbols
-    //
-    private boolean copySymbols(com.grammatech.gtirb.Module module,
-                                ModuleOuterClass.Module.Builder newModule) {
-        for (Symbol symbol : module.getSymbols()) {
-            SymbolOuterClass.Symbol.Builder newSymbol =
-                SymbolOuterClass.Symbol.newBuilder();
-            SymbolOuterClass.Symbol protoSymbol = symbol.getProtoSymbol();
-            newSymbol.mergeFrom(protoSymbol);
-            newModule.addSymbols(newSymbol);
-        }
-        return true;
-    }
-
-    //
-    // not used.
-    //
-    // I thought I would need to change elf symbol info auxdata
-    // as part of supporting the exporting of symbol name changes.
-    // Turns out the auxdata only references names indirectly, so
-    // nothing to change. Keeping for future reference though.
-    //
-    // exportElfSymbolInfo: Update elfSymbolInfo AuxData
-    // to include name changes and return an builder.
-    //
-    // This method is probably irrelevant, since this AuxData
-    // refers to a symbol by UUID, it would only be needed if
-    // I were _adding_ a symbol. But then I would need to make
-    // up some of this, like ELF Section number.
-    //
-    private AuxDataOuterClass.AuxData.Builder
-    exportElfSymbolInfo(AuxData auxData, Program program, Module module) {
-
-        AuxDataOuterClass.AuxData.Builder newAuxData =
-            AuxDataOuterClass.AuxData.newBuilder();
-        AuxDataOuterClass.AuxData oldAuxData =
-            auxData.getProtoAuxData("elfSymbolInfo");
-        byte[] oldAuxDataBytes = oldAuxData.getData().toByteArray();
-        Serialization oldSerialization = new Serialization(oldAuxDataBytes);
-
-        // Calculate size of byte buffer to create:
-        // - Use size of existing byte buffer, delta by net size change of
-        // renames
-        byte[] newAuxDataBytes = new byte[oldAuxDataBytes.length];
-        Serialization newSerialization = new Serialization(newAuxDataBytes);
-
-        // Serialize the number of symbolInfo items
-        long numSymbolInfo = oldSerialization.getLong();
-        newSerialization.putLong(numSymbolInfo);
-
-        // Iterate through them and set new from old
-        for (int i = 0; i < numSymbolInfo; i++) {
-            // UUID
-            newSerialization.putUuid(oldSerialization.getUuid());
-            // Size (long)
-            newSerialization.putLong(oldSerialization.getLong());
-            // Type (string)
-            newSerialization.putString(oldSerialization.getString());
-            // Binding (string)
-            newSerialization.putString(oldSerialization.getString());
-            // Visibility (string)
-            newSerialization.putString(oldSerialization.getString());
-            // Section number (long)
-            newSerialization.putLong(oldSerialization.getLong());
-        }
-
-        newAuxData.setData(ByteString.copyFrom(newAuxDataBytes));
-        String typeName =
-            "mapping<UUID,tuple<uint64_t,string,string,string,uint64_t>>";
-        newAuxData.setTypeNameBytes(ByteString.copyFromUtf8(typeName));
-        return newAuxData;
     }
 
     //
@@ -193,12 +153,12 @@ public class GtirbExporter extends Exporter {
     // exportComments
     //
     private AuxDataOuterClass.AuxData.Builder
-    exportComments(AuxData auxData, Program program, Module module) {
+    exportComments(AuxData auxData, Module module) {
 
         AuxDataOuterClass.AuxData.Builder newAuxData =
             AuxDataOuterClass.AuxData.newBuilder();
-        Listing listing = program.getListing();
-        Memory memory = program.getMemory();
+        Listing listing = this.program.getListing();
+        Memory memory = this.program.getMemory();
         AddressIterator addressIterator =
             listing.getCommentAddressIterator(memory, true);
 
@@ -239,7 +199,7 @@ public class GtirbExporter extends Exporter {
                 listing.getComment(CodeUnit.PRE_COMMENT, commentAddress);
 
             if (commentString != null) {
-                long imageBase = program.getImageBase().getOffset();
+                long imageBase = this.program.getImageBase().getOffset();
                 long longAddress = commentAddress.getOffset() - imageBase;
                 Block block = module.getBlockFromAddress(longAddress);
                 if (block == null) {
@@ -271,6 +231,9 @@ public class GtirbExporter extends Exporter {
         return newAuxData;
     }
 
+    //
+    // getSymbolAddress
+    //
     private Long getSymbolAddress(Symbol symbol) {
         long symbolOffset = 0;
         UUID referentUuid = symbol.getReferentByUuid();
@@ -278,8 +241,8 @@ public class GtirbExporter extends Exporter {
             Node symbolNode = Node.getByUuid(symbol.getReferentByUuid());
             // Address here is really offset from image base
             // Only have address if code or data, anything else stays 0.
-            if (symbolNode instanceof CodeBlock) {
-                CodeBlock codeBlock = (CodeBlock)symbolNode;
+            if (symbolNode instanceof com.grammatech.gtirb.CodeBlock) {
+                com.grammatech.gtirb.CodeBlock codeBlock = (com.grammatech.gtirb.CodeBlock)symbolNode;
                 symbolOffset =
                     codeBlock.getBlock().getByteInterval().getAddress() +
                     codeBlock.getOffset();
@@ -288,9 +251,11 @@ public class GtirbExporter extends Exporter {
                 symbolOffset =
                     dataBlock.getBlock().getByteInterval().getAddress() +
                     dataBlock.getOffset();
+            } else {
+                Msg.info(this, "Unable to get address of " + symbol.getName() + ": referent is not a code or data block");
             }
         }
-        return new Long(symbolOffset);
+        return Long.valueOf(symbolOffset);
     }
 
     //
@@ -304,7 +269,7 @@ public class GtirbExporter extends Exporter {
     //    Gtirb symbols.
     //  - Iterate through the sysmbols in the Ghidra symbol table,
     //      - Look up each one by address to get the Gtirb-only things, such as
-    //      UUID.
+    //        UUID.
     //      - Build the new symbol using Symbol.newBuilder()
     //        using the Ghidra name regardless of whether it matches the Gtirb
     //        name.
@@ -334,38 +299,26 @@ public class GtirbExporter extends Exporter {
         // Define a null address -
         // A symbols with this address doesn't really have an address
         // (externals for instance)
-        Long noAddress = new Long(imageOffset);
+        Long noAddress = Long.valueOf(imageOffset);
         //
         // Create a hashmap with all the Gtirb symbols, indexed by address
-        // Add the image base, otherwise you won;t get any matches.
+        // Add the image base, these are gtirb addresses not load addresses.
         //
         HashMap<Long, Symbol> symbolIndex = new HashMap<>();
-        // Msg.info(this, " ----- Initializing hashmap...");
         for (Symbol symbol : module.getSymbols()) {
-            // Long symbolAddress = new Long(symbol.getAddress() + imageOffset);
             Long symbolAddress = getSymbolAddress(symbol) + imageOffset;
             if (symbolAddress.equals(noAddress)) {
-                // Msg.info(this, " skipping symbol with no address: " +
-                // symbol.getName() + " : " + symbol.getAddress());
                 continue;
             }
             if (symbolIndex.containsKey(symbolAddress)) {
-                // Msg.info(this, "Adding " + symbol.getName() + " : " +
-                // String.format(" : %08x", symbolAddress) + " to
-                // sharedAddresses");
-                //        " - rejecting because address is shard by other
-                //        symbols ");
-                // If there is already a symbol add this address,
-                // add the address to the shared address list, no symbol
-                // can be renamed without a unique address
+                // Symbols that don't have a unique address
+                // just can't be renamed. In practice this
+                // doesn't really matter.
                 sharedAddresses.add(symbolAddress);
             } else {
-                // Msg.info(this, "Adding " + symbol.getName() + " : " +
-                // String.format(" : %08x", symbolAddress) + " to symbolIndex");
                 symbolIndex.put(symbolAddress, symbol);
             }
         }
-        // Msg.info(this, " ----- Initializing done");
 
         //
         // Iterate through all the Ghidra symbols, trying to
@@ -377,7 +330,7 @@ public class GtirbExporter extends Exporter {
         while (allSymbolIterator.hasNext()) {
             ghidra.program.model.symbol.Symbol s = allSymbolIterator.next();
 
-            Long symbolAddress = new Long(s.getAddress().getOffset());
+            Long symbolAddress = Long.valueOf(s.getAddress().getOffset());
 
             //
             // Exclusions:
@@ -397,7 +350,6 @@ public class GtirbExporter extends Exporter {
             //                address can be renamed, until support for UUID
             ///               has been added.
             //
-            // Would look better a single compound if?
             if (s.isExternal()) {
                 continue;
             } else if (s.isDynamic()) {
@@ -411,10 +363,6 @@ public class GtirbExporter extends Exporter {
             } else if (symbolAddress.equals(noAddress)) {
                 continue;
             } else if (sharedAddresses.contains(symbolAddress)) {
-                // Msg.info(this, s.getName() + " : " + String.format(" : %08x",
-                // symbolAddress) +
-                //        " - rejecting because address is shard by other
-                //        symbols ");
                 continue;
             }
 
@@ -425,20 +373,23 @@ public class GtirbExporter extends Exporter {
                 //
                 Symbol gtirbSymbol = symbolIndex.get(symbolAddress);
                 if (!s.getName().equals(gtirbSymbol.getName())) {
-                    // Msg.info(this, s.getName() + " was called " +
-                    // gtirbSymbol.getName() + ", adding to rename list");
                     renamedSymbols.put(gtirbSymbol.getName(), s.getName());
+                    if (this.enableDebugMessages) {
+                        Msg.info(this, s.getName() + " was called " +
+                            gtirbSymbol.getName() + ", adding to rename list");
+                    }
                 }
             } else {
-                Msg.info(this, s.getName() + " : " + s.getSymbolType() +
+                if (this.enableDebugMessages) {
+                    Msg.info(this, s.getName() + " : " + s.getSymbolType() +
                                    String.format(" @ %08x", symbolAddress) +
                                    " does not match any Gtirb symbol.");
+                }
             }
         }
         //
         //  Iterate through gtirb symbols, changing names if needed.
         for (Symbol symbol : module.getSymbols()) {
-            // Msg.info(this, " exporting " + symbol.getName());
             SymbolOuterClass.Symbol.Builder newSymbol =
                 SymbolOuterClass.Symbol.newBuilder();
             SymbolOuterClass.Symbol protoSymbol = symbol.getProtoSymbol();
@@ -446,16 +397,14 @@ public class GtirbExporter extends Exporter {
             if (renamedSymbols.containsKey(symbol.getName())) {
                 String oldName = symbol.getName();
                 String newName = renamedSymbols.get(symbol.getName());
-                // Msg.info(this, " RENAMING " + symbol.getName() + " to " +
-                // renamedSymbols.get(symbol.getName()));
                 if (oldName.startsWith(".") &&
                     oldName.substring(1).equals(newName)) {
-                    // Msg.info(this, " not renaming, it would just remove the
-                    // initial period.");
-                    ;
+                    // Don't rename if the only difference is a dot prefix,
+                    // that leads to massive renaming
+                    continue;
                 } else {
-                    Msg.info(this, " Renaming " + oldName + " to " + newName);
                     newSymbol.setName(renamedSymbols.get(symbol.getName()));
+                    Msg.info(this, "Renaming " + oldName + " to " + newName);
                 }
             }
             newModule.addSymbols(newSymbol);
@@ -468,10 +417,9 @@ public class GtirbExporter extends Exporter {
     //
     private AuxDataOuterClass.AuxData.Builder exportAuxData(AuxData auxData,
                                                             String auxDataType,
-                                                            Program program,
                                                             Module module) {
         if (auxDataType.equals("comments")) {
-            return exportComments(auxData, program, module);
+            return exportComments(auxData, module);
         }
         AuxDataOuterClass.AuxData.Builder newAuxData =
             AuxDataOuterClass.AuxData.newBuilder();
@@ -490,7 +438,7 @@ public class GtirbExporter extends Exporter {
     //
     // Have to avoid confusion with java.io.Module
     private ModuleOuterClass.Module.Builder
-    exportModule(com.grammatech.gtirb.Module module, Program program) {
+    exportModule(com.grammatech.gtirb.Module module) {
         ModuleOuterClass.Module.Builder newModule =
             ModuleOuterClass.Module.newBuilder();
         ModuleOuterClass.Module protoModule = module.getProtoModule();
@@ -522,7 +470,6 @@ public class GtirbExporter extends Exporter {
             newModule.addProxies(newProxyBlock);
         }
 
-        // export comments
         //
         // Special handling of comments here because that is first to be
         // implemented If auxdata (in original gtirb) already had comments,
@@ -534,14 +481,14 @@ public class GtirbExporter extends Exporter {
             if (auxDataType.equals("comments"))
                 alreadyHasComments = true;
             AuxDataOuterClass.AuxData.Builder newAuxData = exportAuxData(
-                module.getAuxData(), auxDataType, program, module);
+                module.getAuxData(), auxDataType, module);
             AuxDataOuterClass.AuxData builtAuxData = newAuxData.build();
             newModule.putAuxData(auxDataType, builtAuxData);
         }
 
         if (alreadyHasComments == false) {
             AuxDataOuterClass.AuxData.Builder newAuxData =
-                exportAuxData(module.getAuxData(), "comments", program, module);
+                exportAuxData(module.getAuxData(), "comments", module);
             AuxDataOuterClass.AuxData builtAuxData = newAuxData.build();
             newModule.putAuxData("comments", builtAuxData);
         }
@@ -549,32 +496,352 @@ public class GtirbExporter extends Exporter {
         return newModule;
     }
 
+
+    // Should be moved to Util or somewhere that it can be shared.
+    //
+    // Get the address (offset from load address) of the block
+    // with the given UUID.
+    //
+    //   Block is the UUID of a GTIRB Code, Data, or Proxy block.
+    //   Address returned is the offset from base or load address.
+    //
+    //   This function gets the referred to block if possible, and
+    //   computes the offset and returns it. If not possible, returns 0.
+    //
+    long getBlockAddress(Module module, UUID blockUuid) {
+        if (blockUuid.equals(com.grammatech.gtirb.Util.NIL_UUID)) {
+            return 0L;
+        }
+        Node uuidNode = Node.getByUuid(blockUuid);
+        if (uuidNode == null) {
+            return 0L;
+        }
+        if (uuidNode instanceof com.grammatech.gtirb.CodeBlock) {
+            com.grammatech.gtirb.CodeBlock codeBlock = (com.grammatech.gtirb.CodeBlock)uuidNode;
+            return (codeBlock.getBlock().getByteInterval().getAddress() +
+                    codeBlock.getOffset());
+        } else if (uuidNode instanceof DataBlock) {
+            DataBlock dataBlock = (DataBlock)uuidNode;
+            return (dataBlock.getBlock().getByteInterval().getAddress() +
+                    dataBlock.getOffset());
+        } else if (uuidNode instanceof ProxyBlock) {
+            Symbol symbol = GtirbUtil.getSymbolByReferent(module, blockUuid);
+            if (symbol != null) {
+                return (symbol.getAddress());
+            }
+        }
+        return (0L);
+    }
+
+
+    //
+    // initAddressToBlockMap
+    // 
+    // The address to block map is needed because edges are stored as UUID-UUID pairs,
+    // (each UUID identifying a code blcok), while Ghidra considers an edge to be a pair
+    // of addresses. Exporting CFG requires translating Ghidra edges to GTIRB
+    // edges, and the most efficient way to get a block UUID from an address is to
+    // create a map of addresses to blocks before starting the export.
+    private boolean initAddressToBlockMap (Module module) {
+        // for every block, add an entry in the address to block map
+        // NOTE: Thises are Gtirb addresses, not load addresses.
+        // TODO: Sorting by address would make this a much more 
+        // efficient operaton.
+        for (Section section : module.getSections()) {
+            for (ByteInterval byteInterval : section.getByteIntervals()) {
+                for (Block block : byteInterval.getBlockList()) {
+                    com.grammatech.gtirb.CodeBlock codeBlock = block.getCodeBlock();
+                    if (codeBlock != null) {
+                        Long blockAddr = codeBlock.getBlock().getByteInterval().getAddress() + codeBlock.getOffset();
+                        addressToBlock.put(blockAddr, codeBlock.getUuid());
+                    }
+                }
+            }
+        }
+        return true;
+    }
+
+    // archival:
+    // this is how to get an address for a block UUID
+    //private Long addrFromUuid (UUID uuid) {
+    //    Node node = Node.getByUuid(uuid);
+    //    if (node instanceof com.grammatech.gtirb.CodeBlock) {
+    //        com.grammatech.gtirb.CodeBlock codeBlock = (com.grammatech.gtirb.CodeBlock)node;
+    //        Long blockAddress =
+    //            codeBlock.getBlock().getByteInterval().getAddress() +
+    //            codeBlock.getOffset();
+    //        return (blockAddress);
+    //    } else if (node instanceof com.grammatech.gtirb.DataBlock) {
+    //        com.grammatech.gtirb.DataBlock dataBlock = (com.grammatech.gtirb.DataBlock)node;
+    //        Long blockAddress =
+    //            dataBlock.getBlock().getByteInterval().getAddress() +
+    //            dataBlock.getOffset();
+    //        return (blockAddress);
+    //    } else {
+    //        return (0L);
+    //    }
+    //}
+
+    //
+    // exportCFG
+    //
+    // private boolean exportCFG
+    //
+    // Procedure:
+    // - Iterate through edges as in original GTIRB, add to output CFG
+    // - Iterate through edges generated byCfgGhidra.java
+    //   - If edge is not in output, and is not external, add to output CFG
+    // How?
+    // - Need ir, to get CFG
+    // - Need module, to map edge UUID to block addresses (this can be retrieved from the ir)
+    // - edge is source, dest, and type
+    private CFGOuterClass.CFG.Builder exportCFG(IR ir, TaskMonitor monitor) {
+
+        //
+        // These are the edges in the original GTIRB, stored
+        // as src-tgt only, so we can discriminate between added
+        // and original edges.
+        //HashMap<UUID, UUID> oldEdges = new HashMap<UUID, UUID>();
+        ArrayList<Flow<UUID,UUID>> oldEdges = new ArrayList<Flow<UUID,UUID>>();
+
+        //
+        // create a new CFG
+        CFGOuterClass.CFG.Builder newCFG = CFGOuterClass.CFG.newBuilder();
+
+        //
+        // Copy all edges from the original GTIRB to the new CFG
+        List<com.grammatech.gtirb.proto.CFGOuterClass.Edge> protoEdges = ir.getProtoIR().getCfg().getEdgesList();
+        for (com.grammatech.gtirb.proto.CFGOuterClass.Edge protoEdge : protoEdges) {
+            CFGOuterClass.Edge.Builder newEdge = CFGOuterClass.Edge.newBuilder();
+            newEdge.setLabel(protoEdge.getLabel())
+                .setSourceUuid(protoEdge.getSourceUuid())
+                .setTargetUuid(protoEdge.getTargetUuid());
+            newCFG.addEdges(newEdge);
+
+            UUID sourceUuid = com.grammatech.gtirb.Util.byteStringToUuid(protoEdge.getSourceUuid());
+            UUID targetUuid = com.grammatech.gtirb.Util.byteStringToUuid(protoEdge.getTargetUuid());
+
+            //Msg.info(this, "OLD EDGE (uuid): " + sourceUuid + " - " + targetUuid);
+            //Msg.info(this, "OLD EDGE (addr):  0x" + Long.toHexString(addrFromUuid(sourceUuid)) +
+            //            "    0x" + Long.toHexString(addrFromUuid(targetUuid)) +
+            //            "    " + protoEdge.getLabel().getType().toString());
+
+            Flow<UUID, UUID> flow = new Flow<UUID, UUID>(sourceUuid, targetUuid);
+            oldEdges.add(flow);
+        }
+
+        // 
+        //  Initialize an address-to-block UUID look up table
+        if (initAddressToBlockMap(ir.getModule()) != true) {
+            Msg.error(this, "Export CFG: Failed to initialize address-to-block look up");
+            return (newCFG);   
+        }
+
+        //
+        // Check out the edges that ghidra has.
+        // This is a two pass operation
+        // First pass is needed to collect the references from each code block
+        //
+        //      (this is needed because ghidra blocks have destinations that are not
+        //       and/or not in the list of references from the block. I'm not sure
+        //       what these destinations are supposed to represent, they seem
+        //       extraneous. But the reference manager gives a list of references
+        //       that more or less match what GTIRB calls edges.)
+        //
+        // NOTE: These are all load addresses, subtract imageBase to compare with GTIRB
+        // NOTE: Ghidra does not show returns in any case, which is different from GTIRB.
+        //       That is, in GTIRB, a RET would generate an edge to a callsite, Ghidra 
+        //       does not do this.
+        // TODO: Allow new edges to externals?
+        boolean includeExternals = false;
+        long imageBase = this.program.getImageBase().getOffset();
+        BasicBlockModel basicBlockModel = new BasicBlockModel(this.program, includeExternals); 
+        ReferenceManager referenceManager = this.program.getReferenceManager();
+        List<Long> validBlocks = new ArrayList<Long>();
+        try {
+            CodeBlockIterator codeBlockIterator = basicBlockModel.getCodeBlocks(monitor);
+            // NOTE: These are Ghidra CodeBlocks thus do not need to be qualified
+            while (codeBlockIterator.hasNext()) {
+                CodeBlock codeBlock = codeBlockIterator.next();
+                //
+                // A code block with no destinations may be something that needs special handling
+                // Here I just let it pass.
+                if (codeBlock.getNumDestinations(monitor) != 0) {
+                    Reference[] fromReferences = referenceManager.getFlowReferencesFrom(codeBlock.getFirstStartAddress());
+                    for (Reference reference : fromReferences) {
+                        Long validSource = reference.getFromAddress().getOffset();
+                        if (!validBlocks.contains(validSource)) {
+                            validBlocks.add(validSource);
+                        }
+                        Long validDestination = reference.getToAddress().getOffset() - imageBase;
+                        if (!validBlocks.contains(validDestination)) {
+                            validBlocks.add(validDestination);
+                        }
+                    }
+                }
+            }
+        } catch (Exception e) {
+                Msg.error(this, "Export CFG: Exception iterating through blocks (first pass): " + e);
+            return(newCFG);
+        }
+        //
+        // Second pass to generate the valid set of edges
+        try {
+            CodeBlockIterator codeBlockIterator = basicBlockModel.getCodeBlocks(monitor);
+            codeBlockIterator = basicBlockModel.getCodeBlocks(monitor);
+            // NOTE: These are Ghidra CodeBlocks thus do not need to be qualified
+            while (codeBlockIterator.hasNext()) {
+                CodeBlock codeBlock = codeBlockIterator.next();
+                Long startAddress = codeBlock.getFirstStartAddress().getOffset() - imageBase;
+                if (!validBlocks.contains(startAddress)) {
+                    continue;
+                }
+                UUID srcUuid = addressToBlock.get(startAddress);
+                if (srcUuid == null) {
+                    // This shouldn't happen normally:
+                    Msg.info(this, "Export CFG: Source address does not map to a code block: 0x"
+                                        + Long.toHexString(startAddress));
+                    continue;
+                } 
+                Reference[] fromReferences = referenceManager.getFlowReferencesFrom(codeBlock.getFirstStartAddress());
+                for (Reference reference : fromReferences) {
+                    Long destinationAddress = reference.getToAddress().getOffset() - imageBase;
+
+                    //
+                    // So now we have an edge, but is it a NEW edge?
+                    UUID dstUuid = addressToBlock.get(destinationAddress);
+                    if (dstUuid == null) {
+                        if (this.enableDebugMessages) {
+                            // But, it's normal for external calls to hit this condition:
+                            Msg.info(this, "Export CFG: Destination address does not map to a code block: 0x"
+                                            + Long.toHexString(destinationAddress));
+                        }
+                        continue;
+                    } 
+
+                    Flow<UUID, UUID> flow = new Flow<UUID, UUID>(srcUuid, dstUuid);
+             
+                    if (oldEdges.contains(flow)) {
+                        //Msg.info(this, "Export CFG: GTIRB and Ghidra edge match: " + Long.toHexString(startAddress) +
+                        //            "    0x" + Long.toHexString(destinationAddress) +
+                        //            "    " + reference.getReferenceType().toString());
+                        continue;
+                    } else {
+                        if (this.enableDebugMessages) {
+                            Msg.info(this, "Adding a new edge (as uuids): " + srcUuid + " - " + dstUuid);
+                            Msg.info(this, "                  (as addrs): 0x" + Long.toHexString(startAddress) + 
+                                           "    0x" + Long.toHexString(destinationAddress) +
+                                           "    " + reference.getReferenceType().toString());
+                        }
+                        CFGOuterClass.Edge.Builder newEdge = CFGOuterClass.Edge.newBuilder();
+                        CFGOuterClass.EdgeLabel.Builder newEdgeLabel = CFGOuterClass.EdgeLabel.newBuilder();
+
+                        // 
+                        // Map Ghidra reference type to GTIRB edge label
+                        //
+                        // Mapping rules/heuristics:
+                        //   - Ghidra JUMP <==> GTIRB Branch (but call stays a call)
+                        //   - In Ghidra, everything is direct, unless specified as indirect
+                        //   - User-added edges iin Ghidra have OVERRIDE added to the name
+                        //
+                        switch (reference.getReferenceType().toString()) {
+                            case "CONDITIONAL_JUMP": 
+                            case "CALLOTHER_OVERRIDE_JUMP": 
+                                newEdgeLabel.setType(CFGOuterClass.EdgeType.Type_Branch);
+                                newEdgeLabel.setConditional(true);
+                                newEdgeLabel.setDirect(true);
+                                break;
+                            case "UNCONDITIONAL_JUMP": 
+                            case "JUMP_OVERRIDE_UNCONDITIONAL": 
+                                newEdgeLabel.setType(CFGOuterClass.EdgeType.Type_Branch);
+                                newEdgeLabel.setConditional(false);
+                                newEdgeLabel.setDirect(true);
+                                break;
+                            case "CONDITIONAL_CALL": 
+                            case "CALLOTHER_OVERRIDE_CALL": 
+                                newEdgeLabel.setType(CFGOuterClass.EdgeType.Type_Call);
+                                newEdgeLabel.setConditional(true);
+                                newEdgeLabel.setDirect(true);
+                                break;
+                            case "UNCONDITIONAL_CALL": 
+                            case "CALL_OVERRIDE_UNCONDITIONAL": 
+                                newEdgeLabel.setType(CFGOuterClass.EdgeType.Type_Call);
+                                newEdgeLabel.setConditional(false);
+                                newEdgeLabel.setDirect(true);
+                                break;
+                            case "CONDITIONAL_COMPUTED_JUMP": 
+                                newEdgeLabel.setType(CFGOuterClass.EdgeType.Type_Branch);
+                                newEdgeLabel.setConditional(true);
+                                newEdgeLabel.setDirect(false);
+                                break;
+                            case "INDIRECTION": 
+                            case "COMPUTED_JUMP": 
+                                newEdgeLabel.setType(CFGOuterClass.EdgeType.Type_Branch);
+                                newEdgeLabel.setConditional(false);
+                                newEdgeLabel.setDirect(false);
+                                break;
+                            case "CONDITIONAL_COMPUTED_CALL": 
+                                newEdgeLabel.setType(CFGOuterClass.EdgeType.Type_Call);
+                                newEdgeLabel.setConditional(true);
+                                newEdgeLabel.setDirect(false);
+                                break;
+                            case "COMPUTED_CALL": 
+                                newEdgeLabel.setType(CFGOuterClass.EdgeType.Type_Call);
+                                newEdgeLabel.setConditional(false);
+                                newEdgeLabel.setDirect(false);
+                                break;
+                            case "FALL_THROUGH": 
+                                newEdgeLabel.setType(CFGOuterClass.EdgeType.Type_Fallthrough);
+                                newEdgeLabel.setConditional(false);
+                                newEdgeLabel.setDirect(true);
+                                break;
+                            default:
+                                Msg.error(this, "Export CFG: Ghidra edge type does not map to GTIRB edge type: " 
+                                    + reference.getReferenceType().toString());
+                                break;
+                        }
+
+                        newEdge.setLabel(newEdgeLabel)
+                            .setSourceUuid(com.grammatech.gtirb.Util.uuidToByteString(srcUuid))
+                            .setTargetUuid(com.grammatech.gtirb.Util.uuidToByteString(dstUuid));
+                        newCFG.addEdges(newEdge);
+                    }
+                }
+            }
+        } catch (Exception e) {
+            Msg.error(this, "Export CFG: Exception iterating through blocks (second pass): " + e);
+        }
+        return(newCFG);
+    }
+
     //
     // exportProgramToFile
     //
-    private boolean exportProgramToFile(Program program, IR ir,
-                                        OutputStream fileOut) {
+    private boolean exportProgramToFile(IR ir,
+                                        OutputStream fileOut,
+                                        TaskMonitor monitor) {
         //
         // Start building a new IR
         IROuterClass.IR.Builder newIR = IROuterClass.IR.newBuilder();
         IROuterClass.IR protoIR = ir.getProtoIR();
 
         // IR has UUID, version, and AuxData.
-        // Ignore AuxData for now, I've never seen an example of it at the top
-        // level
         newIR.setUuid(protoIR.getUuid());
         newIR.setVersion(protoIR.getVersion());
 
         // Add the module
         ModuleOuterClass.Module.Builder newModule =
-            exportModule(ir.getModule(), program);
+            exportModule(ir.getModule());
         // Keep the same module name
         newModule.setName(ir.getModule().getName());
         newIR.addModules(newModule);
 
         // Add the CFG
-        CFGOuterClass.CFG.Builder newCFG = ir.getCfg().buildCFG();
+        CFGOuterClass.CFG.Builder newCFG = exportCFG(ir, monitor);
         newIR.setCfg(newCFG);
+
+        // Add the IR-level AuxData, straight from the original
+        newIR.putAllAuxData(protoIR.getAuxData());
 
         try {
             newIR.build().writeTo(fileOut);
@@ -593,7 +860,7 @@ public class GtirbExporter extends Exporter {
                           AddressSetView addrSet, TaskMonitor monitor)
         throws ExporterException, IOException {
 
-        // 1. Get the program
+        // Get the program
         // (This method came from ASCII exporter)
         if (!(domainObj instanceof Program)) {
             log.appendMsg("Unsupported type: " +
@@ -602,15 +869,13 @@ public class GtirbExporter extends Exporter {
         }
         this.program = (Program)domainObj;
 
-        // 2. From program get file and open it
-        String fileName = program.getExecutablePath();
         //
         // TODO: May want to reject an attempt to export a file that was not
         // originally GTIRB
         //       Or, if it is supported, use an alternate procedure.
         //
 
-        // 3. Get the IR
+        // Get the IR
         // It could be that the IR loaded by the loader is still around
         // (a load followed by an export for instance). If so, use it.
         // Otherwise we need to load the file.
@@ -620,6 +885,8 @@ public class GtirbExporter extends Exporter {
         //
         IR ir = GtirbLoader.getIR();
         if (ir == null) {
+            // From program, get th original file
+            String fileName = program.getExecutablePath();
             File inputFile = new File(fileName);
             InputStream inputStream;
             try {
@@ -628,11 +895,11 @@ public class GtirbExporter extends Exporter {
                 Msg.error(this, "Error opening file" + e);
                 return false;
             }
-            Msg.info(this, " -> IR was null, needed to load file.");
+            Msg.info(this, "Loading GTIRB file " + fileName);
             ir = IR.loadFile(inputStream);
         }
 
-        // 4. Open output file
+        // Open output file
         FileOutputStream fos = null;
         boolean retval = true;
         try {
@@ -651,7 +918,7 @@ public class GtirbExporter extends Exporter {
             }
             return false;
         }
-        return (this.exportProgramToFile(program, ir, fos));
+        return (this.exportProgramToFile(ir, fos, monitor));
     }
 
     //
@@ -661,9 +928,11 @@ public class GtirbExporter extends Exporter {
     public List<Option> getOptions(DomainObjectService domainObjectService) {
         List<Option> list = new ArrayList<>();
 
+        // Currently no options. Comment this out, otherwise it shows up
+        //  as an option dialogue when exporting
         // TODO: If this exporter has custom options, add them to 'list'
-        list.add(new Option("Option name goes here",
-                            "Default option value goes here"));
+        //list.add(new Option("Option name goes here",
+        //                    "Default option value goes here"));
 
         return list;
     }

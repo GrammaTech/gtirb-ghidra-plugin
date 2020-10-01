@@ -401,7 +401,6 @@ public class GtirbExporter extends Exporter {
                     oldName.substring(1).equals(newName)) {
                     // Don't rename if the only difference is a dot prefix,
                     // that leads to massive renaming
-                    continue;
                 } else {
                     newSymbol.setName(renamedSymbols.get(symbol.getName()));
                     Msg.info(this, "Renaming " + oldName + " to " + newName);

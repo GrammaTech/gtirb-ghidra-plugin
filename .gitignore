@@ -1,0 +1,4 @@
+.gradle
+Gtirb/build
+Gtirb/dist
+Gtirb/lib/*.jar

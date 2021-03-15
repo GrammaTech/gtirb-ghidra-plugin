@@ -74,7 +74,7 @@ import ghidra.util.Msg;
 import ghidra.util.task.TaskMonitor;
 
 /**
- * An {@link ExportLoader} for exporting programs to GrammaTech Intermediate
+ * An {@link Exporter} for exporting programs to GrammaTech Intermediate
  * Representation for Binaries (GTIRB).
  */
 public class GtirbExporter extends Exporter {

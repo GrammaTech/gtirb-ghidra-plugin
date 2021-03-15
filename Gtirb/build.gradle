@@ -20,7 +20,8 @@ repositories {
     jcenter()
 }
 dependencies {
-    compile files('lib/protobuf-java-3.11.4.jar')
+    // Expected libraries: protobuf-java-3.*.jar, gtirb_api-1.*.jar
+    compile fileTree(dir: 'lib', include: '*.jar')
 }
 //----------------------START "DO NOT MODIFY" SECTION------------------------------
 def ghidraInstallDir

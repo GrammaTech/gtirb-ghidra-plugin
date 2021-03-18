@@ -1148,14 +1148,6 @@ public class GtirbLoader extends AbstractLibrarySupportLoader {
             Map.entry(Module.ISA.PPC32, 32), Map.entry(Module.ISA.ARM, 32),
             Map.entry(Module.ISA.X64, 64), Map.entry(Module.ISA.ARM64, 64));
 
-        Map<Module.ISA, Endian> endianMap =
-            Map.ofEntries(Map.entry(Module.ISA.IA32, Endian.LITTLE),
-                          Map.entry(Module.ISA.MIPS32, Endian.BIG),
-                          Map.entry(Module.ISA.PPC32, Endian.BIG),
-                          Map.entry(Module.ISA.ARM, Endian.LITTLE),
-                          Map.entry(Module.ISA.X64, Endian.LITTLE),
-                          Map.entry(Module.ISA.ARM64, Endian.LITTLE));
-
         // IF the file ends with .gtirb, we will proceed, otherwise return an
         // empty list
         //   IFF we can load the gtirb file, examine the contents
@@ -1209,8 +1201,8 @@ public class GtirbLoader extends AbstractLibrarySupportLoader {
                             add = false;
                         }
                         // Check endian
-                        if (endianMap.get(module.getISA()) !=
-                            result.pair.getLanguageDescription().getEndian()) {
+                        if ((module.getByteOrder() == Module.ByteOrder.BigEndian) !=
+                            result.pair.getLanguage().isBigEndian()) {
                             add = false;
                         }
 

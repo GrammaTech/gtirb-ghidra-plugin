@@ -13,12 +13,7 @@
  */
 package com.grammatech.gtirb_ghidra_plugin;
 
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileOutputStream;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.OutputStream;
+import java.io.*;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -57,6 +52,7 @@ import ghidra.app.util.OptionException;
 import ghidra.app.util.exporter.Exporter;
 import ghidra.app.util.exporter.ExporterException;
 import ghidra.framework.model.DomainObject;
+import ghidra.framework.options.Options;
 import ghidra.program.model.address.Address;
 import ghidra.program.model.address.AddressIterator;
 import ghidra.program.model.address.AddressSetView;
@@ -878,23 +874,26 @@ public class GtirbExporter extends Exporter {
         // It could be that the IR loaded by the loader is still around
         // (a load followed by an export for instance). If so, use it.
         // Otherwise we need to load the file.
-        //
-        // NOTE This means the original (GTIRB) file must still be around
-        // for exporting to work.
-        //
         IR ir = GtirbLoader.getIR();
         if (ir == null) {
-            // From program, get th original file
-            String fileName = program.getExecutablePath();
-            File inputFile = new File(fileName);
+            // Load the original Gtirb to preserve extra information from it.
             InputStream inputStream;
-            try {
-                inputStream = new FileInputStream(inputFile);
-            } catch (Exception e) {
-                Msg.error(this, "Error opening file" + e);
-                return false;
+            Options programOptions = program.getOptions(Program.PROGRAM_INFO);
+            byte[] gtirbBytes = programOptions.getByteArray("GtirbBytes", null);
+            if (gtirbBytes == null) {
+                String fileName = program.getExecutablePath();
+                File inputFile = new File(fileName);
+                try {
+                    inputStream = new FileInputStream(inputFile);
+                } catch (Exception e) {
+                    Msg.error(this, "Error opening file" + e);
+                    return false;
+                }
+                Msg.info(this, "Loading GTIRB file " + fileName);
+            } else {
+                inputStream = new ByteArrayInputStream(gtirbBytes);
+                Msg.info(this, "Reusing imported GTIRB information");
             }
-            Msg.info(this, "Loading GTIRB file " + fileName);
             ir = IR.loadFile(inputStream);
         }
 

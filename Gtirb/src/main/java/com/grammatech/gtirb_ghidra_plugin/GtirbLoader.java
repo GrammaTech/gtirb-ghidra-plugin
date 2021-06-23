@@ -42,6 +42,7 @@ import ghidra.app.util.opinion.LoadSpec;
 import ghidra.app.util.opinion.QueryOpinionService;
 import ghidra.app.util.opinion.QueryResult;
 import ghidra.framework.model.DomainObject;
+import ghidra.framework.options.Options;
 import ghidra.program.database.mem.FileBytes;
 import ghidra.program.disassemble.DisassemblerMessageListener;
 import ghidra.program.model.address.Address;
@@ -1411,10 +1412,9 @@ public class GtirbLoader extends AbstractLibrarySupportLoader {
             }
         }
 
-        // Experiment with finding a place to put GTIRB ifno that does not
-        // otherwise get stored in the program - for example UUIDs
-        //
-        // This might be addressed by the Saveable class.
+        // If Ghidra stores program options in memory, it would likely be better
+        // to try copying Gtirb information to a separate file in the project
+        // directory instead.
         //
         // Commenting this all out for now.
         // NOTE something about the following code causes an exception when
@@ -1454,6 +1454,9 @@ public class GtirbLoader extends AbstractLibrarySupportLoader {
         //        java.io.File auxDataBak;
         //        String AUX_DATA_BAK = "~auxdata.bak";
         //        ghidra.framework.store.local.LocalFileSystem fs;
+
+        Options programOptions = program.getOptions(Program.PROGRAM_INFO);
+        programOptions.setByteArray("GtirbBytes", provider.getInputStream(0).readAllBytes());
     }
 
     @Override

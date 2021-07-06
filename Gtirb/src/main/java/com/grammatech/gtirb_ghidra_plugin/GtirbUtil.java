@@ -13,12 +13,24 @@
  */
 package com.grammatech.gtirb_ghidra_plugin;
 
+import com.google.protobuf.ByteString;
 import com.grammatech.gtirb.Module;
 import com.grammatech.gtirb.Symbol;
+import ghidra.program.model.lang.LanguageDescription;
 import ghidra.program.model.listing.Program;
+
+import java.security.SecureRandom;
 import java.util.UUID;
 
 public class GtirbUtil {
+
+    static SecureRandom random = new SecureRandom();
+
+    public static ByteString uuidGenByteString() {
+        byte[] uuid = new byte[16];
+        random.nextBytes(uuid);
+        return ByteString.copyFrom(uuid);
+    }
 
     public static Symbol getSymbolByReferent(Module module, UUID referentUuid) {
         for (Symbol symbol : module.getSymbols()) {
@@ -93,5 +105,62 @@ public class GtirbUtil {
             break;
         }
         return retval;
+    }
+
+    /** Translate a Ghidra file format description string to its corresponding GTIRB file format enum. */
+    public static Module.FileFormat toFileFormat(String fileFormatDesc) {
+        Module.FileFormat format = Module.FileFormat.Format_Undefined;
+
+        switch (fileFormatDesc) {
+            case "Executable and Linking Format (ELF)":
+                format = Module.FileFormat.ELF;
+                break;
+            case "Portable Executable (PE)":
+                format = Module.FileFormat.PE;
+                break;
+            case "Common Object File Format (COFF)":
+                // Should "MS Common Object File Format (COFF)" be included here too?
+                format = Module.FileFormat.COFF;
+            case "Mac OS X Mach-O":
+                format = Module.FileFormat.MACHO;
+                break;
+        }
+        return format;
+    }
+
+    /** Translate a Ghidra LanguageDescription to its corresponding GTIRB ISA enum. */
+    public static Module.ISA toISA(LanguageDescription lang) {
+        Module.ISA isa = Module.ISA.ISA_Undefined;
+        switch (lang.getProcessor().toString()) {
+            case "x86":
+                if (lang.getSize() == 32) {
+                    isa = Module.ISA.IA32;
+                } else if (lang.getSize() == 64) {
+                    isa = Module.ISA.X64;
+                }
+                break;
+            case "ARM":
+                if (lang.getSize() == 32) {
+                    isa = Module.ISA.ARM;
+                } else if (lang.getSize() == 64) {
+                    isa = Module.ISA.ARM64;
+                }
+                break;
+            case "PowerPC":
+                if (lang.getSize() == 32) {
+                    isa = Module.ISA.PPC32;
+                } else if (lang.getSize() == 64) {
+                    isa = Module.ISA.PPC64;
+                }
+                break;
+            case "MIPS":
+                if (lang.getSize() == 32) {
+                    isa = Module.ISA.MIPS32;
+                } else if (lang.getSize() == 64) {
+                    isa = Module.ISA.MIPS64;
+                }
+                break;
+        }
+        return isa;
     }
 }

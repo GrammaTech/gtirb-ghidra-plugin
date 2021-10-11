@@ -2,6 +2,8 @@
 # Ghidra's headless analyzer.
 [ "x$BASH_VERSION" = "x" ] && exit 1
 
+PLUGIN_REPO="$(realpath "$(dirname "${BASH_SOURCE[0]}")/..")"
+
 # Set defaults to values that work in the Docker image, where this is used.
 #
 DEFAULT_GHIDRA_INSTALL_DIR=/ghidra
@@ -9,11 +11,11 @@ DEFAULT_GHIDRA_PROJECT=/home/testdir/Project
 
 # Try to use a writeable location for the default Ghidra project
 if [[ ! -w /home ]] && [[ ! -w /home/testdir ]]; then
-    DEFAULT_GHIDRA_PROJECT="$HOME/GhidraTestProject"
+    DEFAULT_GHIDRA_PROJECT="$PLUGIN_REPO/GhidraProject"
 fi
 
 # Attempt to read GHIDRA_INSTALL_DIR from Gradle properties if we can
-GRADLE_PROPERTIES_LOCAL=$(dirname "${BASH_SOURCE[0]}")/../Ghidra/gradle.properties
+GRADLE_PROPERTIES_LOCAL="$PLUGIN_REPO/Ghidra/gradle.properties"
 GRADLE_PROPERTIES_GLOBAL="$HOME/.gradle/gradle.properties"
 
 if [[ -z "$GHIDRA_INSTALL_DIR" ]] && [[ -f "$GRADLE_PROPERTIES_LOCAL" ]]; then
@@ -31,3 +33,7 @@ GHIDRA_PROJECT=${GHIDRA_PROJECT-$DEFAULT_GHIDRA_PROJECT}
 HEADLESS_LAUNCH="${GHIDRA_INSTALL_DIR}/support/analyzeHeadless"
 PROJECT_LOCATION=$(dirname "${GHIDRA_PROJECT}")
 PROJECT_NAME=$(basename "${GHIDRA_PROJECT}")
+
+ghidra_headless() {
+    "$HEADLESS_LAUNCH" "$PROJECT_LOCATION" "$PROJECT_NAME" "$@" -overwrite
+}

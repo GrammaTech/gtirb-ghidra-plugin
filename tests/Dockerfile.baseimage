@@ -1,39 +1,47 @@
-FROM openjdk:11-jdk-slim
+FROM ubuntu:20.04
 
-ENV GHIDRA_DOWNLOAD_FILE ghidra_9.1.2_PUBLIC_20200212.zip
-ENV GHIDRA_DOWNLOAD_SHA ebe3fa4e1afd7d97650990b27777bb78bd0427e8e70c1d0ee042aeb52decac61
-ENV GHIDRA_DOWNLOAD_VERSION 9.1.2_PUBLIC
-ENV PROTOBUF_VERSION 3.11.4
+ENV GHIDRA_DOWNLOAD_SHA 1ce9bdf2d7f6bdfe5dccd06da828af31bc74acfd800f71ade021d5211e820d5e
+ENV GHIDRA_DOWNLOAD_URL \
+https://github.com/NationalSecurityAgency/ghidra/releases/download/Ghidra_10.0.4_build/ghidra_10.0.4_PUBLIC_20210928.zip
 ENV GHIDRA_INSTALL_DIR /ghidra
-ENV TESTDIR /home/testdir
+ENV TESTDIR /workspace
+
+#
+# Install APT packages
+# Setting a timezone is needed to avoid an interactive prompt from dpkg
+#
+RUN ln -fs /usr/share/zoneinfo/America/New_York /etc/localtime \
+    && apt-get update && apt-get install -y --no-install-recommends \
+    fontconfig libxrender1 libxtst6 libxi6 wget unzip git openjdk-11-jdk gnupg cmake \
+    protobuf-compiler libprotobuf-dev build-essential
 
 #
 # Download Ghidra and install it to /ghidra
 #
-RUN apt-get update && apt-get install -y fontconfig libxrender1 libxtst6 libxi6 wget unzip git \
-    cmake make gcc g++ protobuf-compiler libprotobuf-dev --no-install-recommends \
-    && wget --progress=bar:force -O /tmp/ghidra.zip https://www.ghidra-sre.org/${GHIDRA_DOWNLOAD_FILE} \
+RUN wget --progress=bar:force -O /tmp/ghidra.zip ${GHIDRA_DOWNLOAD_URL} \
     && echo "$GHIDRA_DOWNLOAD_SHA /tmp/ghidra.zip" | sha256sum -c - \
     && unzip /tmp/ghidra.zip \
-    && mv ghidra_${GHIDRA_DOWNLOAD_VERSION} ${GHIDRA_INSTALL_DIR} \
+    && rm /tmp/ghidra.zip \
+    && mv ghidra_* ${GHIDRA_INSTALL_DIR} \
     && chmod +x ${GHIDRA_INSTALL_DIR}/ghidraRun
 
 #
-# Get java protobuf jar file, a dependency for the plugin
+# Install ddisasm from the public APT repository
 #
-RUN mkdir ${TESTDIR} \
-    && wget --progress=bar:force -O ${TESTDIR}/protobuf-java-${PROTOBUF_VERSION}.jar \
-    https://repo1.maven.org/maven2/com/google/protobuf/protobuf-java/${PROTOBUF_VERSION}/protobuf-java-${PROTOBUF_VERSION}.jar
+RUN wget -O - https://download.grammatech.com/gtirb/files/apt-repo/conf/apt.gpg.key | apt-key add - \
+    && echo "deb https://download.grammatech.com/gtirb/files/apt-repo focal stable" > /etc/apt/sources.list.d/gtirb.list \
+    && apt-get update \
+    && apt-get install -y libgtirb gtirb-pprinter ddisasm
 
 #
-# Get gradle
-#  (Ghdira has a specific requirement that Gradle 5 be used)
+# Install Gradle. Ghidra 10.0 seems to require plugins be built with Gradle 5.1 and breaks with 7.0+.
 #
-RUN wget --progress=bar:force -O ${TESTDIR}/gradle.zip https://services.gradle.org/distributions/gradle-5.0-bin.zip \
-    && cd ${TESTDIR} \
-    && unzip gradle.zip \
-    && rm gradle.zip \
-    && cd /bin && ln -s ${TESTDIR}/gradle-5.0/bin/gradle
+RUN wget --progress=bar:force -O /tmp/gradle.zip https://services.gradle.org/distributions/gradle-5.1.1-bin.zip \
+    && unzip -d /opt /tmp/gradle.zip \
+    && rm /tmp/gradle.zip \
+    && ln -s /opt/gradle-5.1.1/bin/gradle /usr/local/bin/
+
+RUN mkdir /workspace
 
 #
 # Clean up

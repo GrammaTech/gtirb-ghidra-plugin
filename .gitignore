@@ -1,4 +1,7 @@
 .gradle
+GhidraProject
 Gtirb/build
 Gtirb/dist
 Gtirb/lib/*.jar
+gtirb-src
+protobuf

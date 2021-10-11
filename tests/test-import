@@ -4,18 +4,18 @@
 # the gtirb file: "main of <testfilename>". If not found, test fails.
 #
 #
-. "$(dirname "${BASH_SOURCE[0]}")/ghidra-defs.sh"
+. "$(dirname "${BASH_SOURCE[0]}")/../scripts/ghidra-defs.sh"
 
-DEFAULT_GHIDRA_FILE="test_x64.gtirb"
-DEFAULT_GHIDRA_SCRIPT=DumpBookmarks.java
+DEFAULT_INPUT_FILE=$(dirname "${BASH_SOURCE[0]}")/hello_x64.elf
+DEFAULT_GHIDRA_SCRIPT=$(dirname "${BASH_SOURCE[0]}")/DumpBookmarks.java
 
 # Allow the test file to be set as a command line argument
 # (supercedes environment variable, if there is one)
 if [[ ! -z "$1" ]]; then
-	GHIDRA_FILE=$1
+	INPUT_FILE=$1
 fi
 
-GHIDRA_FILE="${GHIDRA_FILE-$DEFAULT_GHIDRA_FILE}"
+INPUT_FILE="${INPUT_FILE-$DEFAULT_INPUT_FILE}"
 GHIDRA_SCRIPT="${GHIDRA_SCRIPT-$DEFAULT_GHIDRA_SCRIPT}"
 
 echo ""
@@ -23,23 +23,32 @@ echo " test-import:"
 echo "    Import a file, analyze it, and check for errors"
 echo "       Ghidra install dir:  ${GHIDRA_INSTALL_DIR}"
 echo "       Ghidra project:      ${GHIDRA_PROJECT}"
-echo "       Ghidra file:         ${GHIDRA_FILE}"
+echo "       Input file:          ${INPUT_FILE}"
 echo ""
+
+GTIRB_FILE="$INPUT_FILE"
+if [[ $INPUT_FILE != *.gtirb ]]; then
+    GTIRB_FILE=/tmp/test-import.gtirb
+    echo "Generating gtirb file from binary: $INPUT_FILE"
+    ddisasm --ir "$GTIRB_FILE" "$INPUT_FILE" || exit
+    echo "Created gtirb file: $GTIRB_FILE"
+    echo
+fi
 
 #
 # Run ghidra in headless mode
 # - GHIDRA_SCRIPT is supposed to be a script that dump comments
 # - allow import to overwrite any program already existing with that name
 # - run analyzer
-# - Dump bookmarks becuase any errors would be show up there.
+# - Dump bookmarks because any errors would be show up there.
 SCRIPT_NAME=$(basename "$GHIDRA_SCRIPT")
-SCRIPT_PATH=$(dirname "$GHIDRA_SCRIPT")
+SCRIPT_PATH=$(realpath $(dirname "$GHIDRA_SCRIPT"))
 mkdir -p "$GHIDRA_PROJECT"
-if "$HEADLESS_LAUNCH" "$PROJECT_LOCATION" "$PROJECT_NAME" -import "$GHIDRA_FILE" \
-    -scriptPath "$SCRIPT_PATH" -postScript "$SCRIPT_NAME" -overwrite \
-    | tee /dev/stderr | grep -q "0 error bookmarks"; then
-	exit 0
-else
-	echo "import failed."
-	exit 1
+ghidra_headless -import "$GTIRB_FILE" -scriptPath "$SCRIPT_PATH" \
+    -postScript "$SCRIPT_NAME" | tee /dev/stderr | grep -q "0 error bookmarks"
+rc=$?
+if [[ $rc != 0 ]]; then
+    echo "import failed."
 fi
+rm -f /tmp/test-import.gtirb
+exit $rc

@@ -9,9 +9,17 @@ build-and-test:
   stage: build-and-test
   script:
   - echo "Building plugin..."
+  - source ${CI_PROJECT_DIR}/version.txt
+  # Use the internal apt repo for a better ddisasm
+  - if [ -n "$INTERNAL_APT_REPO" ]; then
+      echo "Using internal apt repo" &&
+      echo "deb $INTERNAL_APT_REPO focal stable" > /etc/apt/sources.list.d/gtirb.list &&
+      apt-get update -y &&
+      apt-get remove -y ddisasm-* libgtirb-* libgtirb libcapstone-* &&
+      apt-get install -y ddisasm; fi
   # Clone GTIRB repo so you can get the Java API
   - cd ${TESTDIR}
-  - git clone https://git.grammatech.com/rewriting/gtirb.git
+  - git clone https://git.grammatech.com/rewriting/gtirb.git -b $GTIRB_BRANCH
   # Run the protocol compiler to generate Java classes from proto files
   - cd ${TESTDIR}/gtirb
   - protoc --java_out=java --proto_path=proto ./proto/*.proto
@@ -23,16 +31,15 @@ build-and-test:
   - make
   # Copy in GTIRB Java API and protobuf Java lib
   - cd ${CI_PROJECT_DIR}/Gtirb
-  - cp ${TESTDIR}/gtirb/build/java/gtirb_api-*.jar lib/
-  - cp ${TESTDIR}/protobuf-java-${PROTOBUF_VERSION}.jar lib/
+  - cp ${TESTDIR}/gtirb/build/java/*.jar lib/
   # Build the plugin
   - gradle
   # Install in Ghidra
-  - mv dist/*.zip ${GHIDRA_INSTALL_DIR}/Extensions/Ghidra/${GHIDRA_DOWNLOAD_VERSION}_Gtirb.zip
-  - unzip -d ${GHIDRA_INSTALL_DIR}/Ghidra/Extensions ${GHIDRA_INSTALL_DIR}/Extensions/Ghidra/${GHIDRA_DOWNLOAD_VERSION}_Gtirb.zip
+  - rm -rf ${GHIDRA_INSTALL_DIR}/Ghidra/Extensions/Gtirb
+  - unzip -d ${GHIDRA_INSTALL_DIR}/Ghidra/Extensions dist/*.zip
   # Run test scripts using plugin in headless mode
   - cd ${CI_PROJECT_DIR}/tests
-  - ./test-import test_x64.gtirb
-  - ./test-import test_ia32.gtirb
-  - ./test-import test_ppc32.gtirb
-  - ./test-import test_arm.gtirb
+  - ./test-import hello_x64.elf
+  - ./test-import hello_ia32.elf
+  #- if [ -n "$INTERNAL_APT_REPO" ]; then ./test-import hello_arm.elf; fi
+  #- if [ -n "$INTERNAL_APT_REPO" ]; then ./test-import hello_ppc.elf; fi

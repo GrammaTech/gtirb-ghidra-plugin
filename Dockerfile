@@ -1,79 +1,73 @@
-FROM openjdk:11-jdk-slim
+FROM ubuntu:20.04
 
-ENV GHIDRA_DOWNLOAD_FILE ghidra_9.1.2_PUBLIC_20200212.zip
-ENV GHIDRA_DOWNLOAD_SHA ebe3fa4e1afd7d97650990b27777bb78bd0427e8e70c1d0ee042aeb52decac61
-ENV GHIDRA_DOWNLOAD_VERSION 9.1.2_PUBLIC
-ENV PROTOBUF_VERSION 3.11.4
+ENV GHIDRA_DOWNLOAD_SHA 1ce9bdf2d7f6bdfe5dccd06da828af31bc74acfd800f71ade021d5211e820d5e
+ENV GHIDRA_DOWNLOAD_URL \
+https://github.com/NationalSecurityAgency/ghidra/releases/download/Ghidra_10.0.4_build/ghidra_10.0.4_PUBLIC_20210928.zip
 ENV GHIDRA_INSTALL_DIR /ghidra
+
+#
+# Install APT packages
+# Setting a timezone is needed to avoid an interactive prompt from dpkg
+#
+RUN ln -fs /usr/share/zoneinfo/America/New_York /etc/localtime \
+    && apt-get update && apt-get install -y --no-install-recommends \
+    fontconfig libxrender1 libxtst6 libxi6 wget unzip git openjdk-11-jdk gnupg cmake \
+    protobuf-compiler libprotobuf-dev build-essential
 
 #
 # Download Ghidra and install it to /ghidra
 #
-RUN apt-get update && apt-get install -y fontconfig libxrender1 libxtst6 libxi6 wget unzip git --no-install-recommends \
-    && wget --progress=bar:force -O /tmp/ghidra.zip https://www.ghidra-sre.org/${GHIDRA_DOWNLOAD_FILE} \
+RUN wget --progress=bar:force -O /tmp/ghidra.zip ${GHIDRA_DOWNLOAD_URL} \
     && echo "$GHIDRA_DOWNLOAD_SHA /tmp/ghidra.zip" | sha256sum -c - \
     && unzip /tmp/ghidra.zip \
-    && mv ghidra_${GHIDRA_DOWNLOAD_VERSION} ${GHIDRA_INSTALL_DIR} \
+    && rm /tmp/ghidra.zip \
+    && mv ghidra_* ${GHIDRA_INSTALL_DIR} \
     && chmod +x ${GHIDRA_INSTALL_DIR}/ghidraRun
 
 #
-# Install protobuf compiler, will need it for Java API
+# Install ddisasm from the public APT repository
 #
-RUN mkdir /workspace \
-    && wget --progress=bar:force -O /workspace/protoc \
-      https://repo1.maven.org/maven2/com/google/protobuf/protoc/${PROTOBUF_VERSION}/protoc-${PROTOBUF_VERSION}-linux-x86_64.exe \
-    && chmod u+x /workspace/protoc \
-    && cd /bin \
-    && ln -s /workspace/protoc
+RUN wget -O - https://download.grammatech.com/gtirb/files/apt-repo/conf/apt.gpg.key | apt-key add - \
+    && echo "deb https://download.grammatech.com/gtirb/files/apt-repo focal stable" > /etc/apt/sources.list.d/gtirb.list \
+    && apt-get update \
+    && apt-get install -y libgtirb gtirb-pprinter ddisasm
 
 #
-# Clone gtirb and generate protobuf java files
+# Install Gradle. Ghidra 10.0 seems to require plugins be built with Gradle 5.1 and breaks with 7.0+.
 #
-RUN cd /workspace \
-    && git clone https://git.grammatech.com/rewriting/gtirb.git \
+RUN wget --progress=bar:force -O /tmp/gradle.zip https://services.gradle.org/distributions/gradle-5.1.1-bin.zip \
+    && unzip -d /opt /tmp/gradle.zip \
+    && rm /tmp/gradle.zip \
+    && ln -s /opt/gradle-5.1.1/bin/gradle /usr/local/bin/
+
+RUN mkdir /workspace
+
+#
+# Clone Gtirb and build Java API
+#
+RUN git clone https://github.com/GrammaTech/gtirb.git /workspace/gtirb \
     && cd /workspace/gtirb \
-    && protoc --java_out=java --proto_path=proto ./proto/*.proto
+    && protoc --java_out=java --proto_path=proto ./proto/*.proto \
+    && mkdir build && cd build \
+    && cmake -DGTIRB_CXX_API=OFF -DGTIRB_PY_API=OFF -DGTIRB_CL_API=OFF .. \
+    && cd java \
+    && make
 
 #
-# Clone gtirb_ghidra_plugin and copy gtirb and protobuf files in
+# Build and install gtirb_ghidra_plugin
 #
-RUN cd /workspace \
-    && git clone https://git.grammatech.com/rewriting/gtirb-ghidra-plugin.git \
-    && cp -r /workspace/gtirb/java/com/grammatech/gtirb /workspace/gtirb-ghidra-plugin/Gtirb/src/main/java/com/grammatech
-
-#
-# Get java protobuf jar file, a dependency for the plugin
-#
-RUN wget --progress=bar:force -O /workspace/protobuf-java-${PROTOBUF_VERSION}.jar \
-    https://repo1.maven.org/maven2/com/google/protobuf/protobuf-java/${PROTOBUF_VERSION}/protobuf-java-${PROTOBUF_VERSION}.jar \
-    && mv /workspace/protobuf-java-${PROTOBUF_VERSION}.jar /workspace/gtirb-ghidra-plugin/Gtirb/lib/
-
-#
-# Get gradle and use it to build plugin
-#  (Ghdira has a specific requirement that Gradle 5 be used)
-#
-RUN wget --progress=bar:force -O /workspace/gradle.zip https://services.gradle.org/distributions/gradle-5.0-bin.zip \
-    && cd /workspace \
-    && unzip gradle.zip \
-    && rm gradle.zip \
-    && cd /bin && ln -s /workspace/gradle-5.0/bin/gradle \
-    && cd /workspace/gtirb-ghidra-plugin/Gtirb \
-    && gradle
-
-#
-# Install plugin into ghidra
-#  (Putting the zip in Extensions/Ghidra and unzipping it to Ghidra/Extensions installs the plugin)
-#
-RUN cd /workspace/gtirb-ghidra-plugin/Gtirb/dist/ \
-    && mv *.zip ${GHIDRA_INSTALL_DIR}/Extensions/Ghidra/${GHIDRA_DOWNLOAD_VERSION}_Gtirb.zip \
-    && cd ${GHIDRA_INSTALL_DIR}/Ghidra/Extensions \
-    && unzip ../../Extensions/Ghidra/${GHIDRA_DOWNLOAD_VERSION}_Gtirb.zip
+ADD . /workspace/gtirb-ghidra-plugin
+RUN cd /workspace/gtirb-ghidra-plugin/Gtirb \
+    && rm -f lib/*.jar dist/*.zip \
+    && cp /workspace/gtirb/build/java/*.jar lib/ \
+    && gradle \
+    && unzip -d ${GHIDRA_INSTALL_DIR}/Ghidra/Extensions/ dist/*.zip
 
 #
 # Clean up
 #
 RUN  echo "===> Clean up unnecessary files..." \
-    && apt-get purge -y --auto-remove wget unzip \
+    && apt-get purge -y --auto-remove wget \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/* /var/cache/apt/archives /tmp/* /var/tmp/* /ghidra/docs /ghidra/Extensions/Eclipse /ghidra/licenses
 
@@ -81,5 +75,5 @@ RUN  echo "===> Clean up unnecessary files..." \
 # Try importing gtirb file - headless
 # Use headless script to verify imported file is there
 #
-RUN cd /workspace/gtirb-ghidra-plugin/test \
+RUN cd /workspace/gtirb-ghidra-plugin/tests \
     && ./test-import

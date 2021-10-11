@@ -1,0 +1,33 @@
+#!/bin/bash
+. "$(dirname "${BASH_SOURCE[0]}")/ghidra-defs.sh"
+
+if [[ -z "$2" ]]; then
+    echo "Usage: $0 input-binary output.gtirb"
+    exit 1
+fi
+
+GHIDRA_FILE="$1"
+OUTPUT_FILE="$2"
+
+echo "Using Ghidra to export..."
+echo "    input: $1"
+echo "    output GTIRB: $2"
+echo
+
+if [[ ! -d "$GHIDRA_INSTALL_DIR" || ! -x "$HEADLESS_LAUNCH" ]]; then
+    echo "Error: Unable to find Ghidra install."
+    echo "Please set the environment variable GHIDRA_INSTALL_DIR"
+    exit 1
+fi
+
+TESTFILE_NAME=$(basename "${GHIDRA_FILE}")
+mkdir -p "${GHIDRA_PROJECT}"
+rm -f "$OUTPUT_FILE"
+
+ghidra_headless -import "$GHIDRA_FILE" -postScript ExportGtirb.java \
+    $(realpath "$OUTPUT_FILE") && [[ -f "$OUTPUT_FILE" ]]
+rc=$?
+if [[ $rc != 0 ]]; then
+    echo "Export failed."
+fi
+exit $rc

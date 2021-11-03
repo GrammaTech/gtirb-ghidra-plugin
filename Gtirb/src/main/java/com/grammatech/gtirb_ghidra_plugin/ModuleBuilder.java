@@ -7,10 +7,8 @@
  */
 package com.grammatech.gtirb_ghidra_plugin;
 
-import com.google.protobuf.ByteString;
 import com.grammatech.gtirb.*;
 import com.grammatech.gtirb.Module;
-import com.grammatech.gtirb.proto.*;
 import ghidra.app.util.exporter.ExporterException;
 import ghidra.program.model.address.Address;
 import ghidra.program.model.address.AddressIterator;
@@ -23,13 +21,12 @@ import ghidra.program.model.symbol.SymbolTable;
 import ghidra.program.model.symbol.SymbolType;
 import ghidra.util.Msg;
 
-import java.nio.charset.StandardCharsets;
 import java.util.*;
 
 /** Export handling to generate a GTIRB ${@link Module} based on the current state of Ghidra's ${@link Program}. */
 public class ModuleBuilder {
-    private Program program;
-    private boolean enableDebugMessages = false;
+    private final Program program;
+    private final boolean enableDebugMessages = false;
 
     public ModuleBuilder(Program program) {
         this.program = program;
@@ -57,16 +54,15 @@ public class ModuleBuilder {
     }
 
     /** Get a block that starts at the specified address, splitting to make a new block if necessary. */
-    public static ByteString splitBlocksAtOffset(ModuleOuterClass.Module.Builder module, long offset,
-                                                 boolean forceExec, long sizeHint) {
-        SectionOuterClass.Section.Builder section = null;
-        ByteIntervalOuterClass.ByteInterval.Builder byteInterval = null;
+    public static UUID splitBlocksAtOffset(Module module, long offset, boolean forceExec, long sizeHint) {
+        Section section = null;
+        ByteInterval byteInterval = null;
         long newBlockOffset = 0;
 
         // Find the ByteInterval for this address
-        for (SectionOuterClass.Section.Builder curSection : module.getSectionsBuilderList()) {
-            for (ByteIntervalOuterClass.ByteInterval.Builder curInterval : curSection.getByteIntervalsBuilderList()) {
-                if (!curInterval.getHasAddress())
+        for (Section curSection : module.getSections()) {
+            for (ByteInterval curInterval : curSection.getByteIntervals()) {
+                if (!curInterval.hasAddress())
                     continue;
 
                 newBlockOffset = offset - curInterval.getAddress();
@@ -82,8 +78,7 @@ public class ModuleBuilder {
         if (byteInterval == null)
             return null;
 
-        boolean isExecutable =
-                section.getSectionFlagsList().contains(SectionOuterClass.SectionFlag.Executable);
+        boolean isExecutable = section.getSectionFlags().contains(Section.SectionFlag.Executable);
         if (forceExec && !isExecutable) {
             Msg.info(module, "Skipping non-executable CodeBlock: " +
                     section.getName() + " " + Long.toHexString(offset));
@@ -91,28 +86,17 @@ public class ModuleBuilder {
         }
 
         // Find the matching block in this ByteInterval
-        List<ByteIntervalOuterClass.Block.Builder> blockList = byteInterval.getBlocksBuilderList();
         int blockIndex = 0;
-        ByteIntervalOuterClass.Block.Builder oldBlock = null;
+        ByteBlock oldBlock = null;
         long oldBlockSize = 0;
         long oldBlockOffset = 0;
-        for (ByteIntervalOuterClass.Block.Builder block : blockList) {
-            long blockSize = 0;
-            ByteString uuid = null;
-            if (block.getValueCase() == ByteIntervalOuterClass.Block.ValueCase.CODE) {
-                CodeBlockOuterClass.CodeBlock.Builder codeBlock = block.getCodeBuilder();
-                blockSize = codeBlock.getSize();
-                uuid = codeBlock.getUuid();
-            } else {
-                DataBlockOuterClass.DataBlock.Builder dataBlock = block.getDataBuilder();
-                blockSize = dataBlock.getSize();
-                uuid = dataBlock.getUuid();
-            }
+        for (ByteBlock block : byteInterval.getBlockList()) {
+            long blockSize = block.getSize();
             oldBlockOffset = block.getOffset();
 
             // Block boundary matches what we need without splitting
             if (newBlockOffset == oldBlockOffset) {
-                return uuid;
+                return block.getUuid();
             }
 
             // Check whether the new block should fill a gap between existing blocks
@@ -131,15 +115,18 @@ public class ModuleBuilder {
         }
 
         // Split this block to make a new block that starts at the desired address
-        ByteIntervalOuterClass.Block.Builder newBlock = ByteIntervalOuterClass.Block.newBuilder();
-        long prevSize = 0;
+        ByteBlock newBlock;
         long newSize;
-        ByteString newUuid = GtirbUtil.uuidGenByteString();
+        long decodeMode = 0;
         if (oldBlock != null) {
             // Splitting an old block, keeping its offset but shrinking to fit a new block after it
-            prevSize = newBlockOffset - oldBlockOffset;
+            long prevSize = newBlockOffset - oldBlockOffset;
             newSize = oldBlockSize - prevSize;
-            isExecutable = oldBlock.getValueCase() == ByteIntervalOuterClass.Block.ValueCase.CODE;
+            isExecutable = oldBlock instanceof CodeBlock;
+            oldBlock.setSize(prevSize);
+            if (isExecutable) {
+                decodeMode = ((CodeBlock) oldBlock).getDecodeMode();
+            }
         } else if (newBlockOffset >= oldBlockOffset) {
             // Adding a new block in empty space at the end of the ByteInterval.
             newSize = byteInterval.getSize() - newBlockOffset;
@@ -155,130 +142,77 @@ public class ModuleBuilder {
             newSize = sizeHint;
         }
         if (isExecutable) {
-            CodeBlockOuterClass.CodeBlock.Builder newCodeBlock = CodeBlockOuterClass.CodeBlock.newBuilder();
-            if (oldBlock != null)
-                oldBlock.getCodeBuilder().setSize(prevSize);
-            newCodeBlock.setUuid(newUuid);
-            newCodeBlock.setSize(newSize);
-            newBlock.setCode(newCodeBlock);
+            newBlock = new CodeBlock(newSize, newBlockOffset, decodeMode, byteInterval);
         } else {
-            DataBlockOuterClass.DataBlock.Builder newDataBlock = DataBlockOuterClass.DataBlock.newBuilder();
-            if (oldBlock != null)
-                oldBlock.getDataBuilder().setSize(prevSize);
-            newDataBlock.setUuid(newUuid);
-            newDataBlock.setSize(newSize);
-            newBlock.setData(newDataBlock);
+            newBlock = new DataBlock(newSize, newBlockOffset, byteInterval);
         }
-        newBlock.setOffset(newBlockOffset);
-        byteInterval.addBlocks(blockIndex, newBlock);
+        byteInterval.getBlockList().add(blockIndex, newBlock);
 
-        return newUuid;
+        return newBlock.getUuid();
     }
 
     /** Create a new Gtirb section based on the contents of a Ghidra memoryBlock. */
-    private SectionOuterClass.Section.Builder exportSection(Section section, MemoryBlock memoryBlock)
+    private Section exportSection(Section section, MemoryBlock memoryBlock, Module module)
             throws ExporterException {
-        SectionOuterClass.Section.Builder newSection =
-                SectionOuterClass.Section.newBuilder();
         if (section != null) {
             // TODO copy UUIDs from source Gtirb, but export everything else from memoryBlock
-            SectionOuterClass.Section protoSection = section.getProtoSection();
-            newSection.mergeFrom(protoSection);
-        } else {
-            newSection.setName(memoryBlock.getName());
-            newSection.setUuid(GtirbUtil.uuidGenByteString());
-
-            /* Gtirb also specifies a ThreadLocal section flag, but Ghidra doesn't have one here.
-               Conversely, we aren't currently using Ghidra's isMapped, isOverlay, or isVolatile flags.
-             */
-            if (memoryBlock.isRead())
-                newSection.addSectionFlags(SectionOuterClass.SectionFlag.Readable);
-            if (memoryBlock.isWrite())
-                newSection.addSectionFlags(SectionOuterClass.SectionFlag.Writable);
-            if (memoryBlock.isExecute())
-                newSection.addSectionFlags(SectionOuterClass.SectionFlag.Executable);
-            if (memoryBlock.isLoaded())
-                newSection.addSectionFlags(SectionOuterClass.SectionFlag.Loaded);
-            if (memoryBlock.isInitialized())
-                newSection.addSectionFlags(SectionOuterClass.SectionFlag.Initialized);
-
-            ByteIntervalOuterClass.ByteInterval.Builder byteInterval =
-                    ByteIntervalOuterClass.ByteInterval.newBuilder();
-            byte[] blockBytes = null;
-            if (memoryBlock.isInitialized()) {
-                try {
-                    blockBytes = new byte[(int) memoryBlock.getSize()];
-                    memoryBlock.getBytes(memoryBlock.getStart(), blockBytes);
-                } catch (MemoryAccessException e) {
-                    throw new ExporterException("Error reading section bytes: " + memoryBlock.getName());
-                }
-            }
-            byteInterval.setUuid(GtirbUtil.uuidGenByteString());
-            byteInterval.setHasAddress(true);
-            byteInterval.setAddress(memoryBlock.getStart().getOffset() - program.getImageBase().getOffset());
-            byteInterval.setSize(memoryBlock.getSize());
-            if (blockBytes != null)
-                byteInterval.setContents(ByteString.copyFrom(blockBytes));
-            newSection.addByteIntervals(byteInterval);
+            return section;
         }
-        return newSection;
-    }
 
-    /** Create a new Gtirb ProxyBlock. */
-    private ProxyBlockOuterClass.ProxyBlock.Builder
-    exportProxyBlock(ProxyBlock proxyBlock) {
-        ProxyBlockOuterClass.ProxyBlock.Builder newProxyBlock =
-                ProxyBlockOuterClass.ProxyBlock.newBuilder();
-        ProxyBlockOuterClass.ProxyBlock protoProxyBlock =
-                proxyBlock.getProtoProxyBlock();
-        newProxyBlock.mergeFrom(protoProxyBlock);
-        return newProxyBlock;
+        String sectionName = memoryBlock.getName();
+        ArrayList<Section.SectionFlag> sectionFlags = new ArrayList<>();
+        ArrayList<ByteInterval> byteIntervals = new ArrayList<>();
+
+        /* Gtirb also specifies a ThreadLocal section flag, but Ghidra doesn't have one here.
+           Conversely, we aren't currently using Ghidra's isMapped, isOverlay, or isVolatile flags.
+         */
+        if (memoryBlock.isRead())
+            sectionFlags.add(Section.SectionFlag.Readable);
+        if (memoryBlock.isWrite())
+            sectionFlags.add(Section.SectionFlag.Writable);
+        if (memoryBlock.isExecute())
+            sectionFlags.add(Section.SectionFlag.Executable);
+        if (memoryBlock.isLoaded())
+            sectionFlags.add(Section.SectionFlag.Loaded);
+        if (memoryBlock.isInitialized())
+            sectionFlags.add(Section.SectionFlag.Initialized);
+
+        section = new Section(sectionName, sectionFlags, byteIntervals, module);
+
+        byte[] blockBytes = null;
+        if (memoryBlock.isInitialized()) {
+            try {
+                blockBytes = new byte[(int) memoryBlock.getSize()];
+                memoryBlock.getBytes(memoryBlock.getStart(), blockBytes);
+            } catch (MemoryAccessException e) {
+                throw new ExporterException("Error reading section bytes: " + memoryBlock.getName());
+            }
+        }
+
+        // TODO remove this hack when API is fixed
+        if (blockBytes == null) {
+            blockBytes = new byte[(int) memoryBlock.getSize()];
+        }
+
+        long biAddress = memoryBlock.getStart().getOffset() - program.getImageBase().getOffset();
+        ByteInterval byteInterval = new ByteInterval(blockBytes, biAddress, section);
+        byteInterval.setSize(memoryBlock.getSize());
+        byteIntervals.add(byteInterval);
+
+        return section;
     }
 
     //
     // exportComments
     //
-    private AuxDataOuterClass.AuxData.Builder exportComments(Module module) {
-
-        AuxDataOuterClass.AuxData.Builder newAuxData =
-                AuxDataOuterClass.AuxData.newBuilder();
+    private Comments exportComments(Module module) {
         Listing listing = this.program.getListing();
         Memory memory = this.program.getMemory();
-        AddressIterator addressIterator =
-                listing.getCommentAddressIterator(memory, true);
-
-        // Find out how much to allocate for all comment string plus UUID and
-        // displacement for each one
-        int numberOfComments = 0;
-        int totalAllocation = 0;
-        int sizeOfLong = 8;
-        while (addressIterator.hasNext()) {
-            Address commentAddress = addressIterator.next();
-            // Look only for PRE for comments:
-            String comment =
-                    listing.getComment(CodeUnit.PRE_COMMENT, commentAddress);
-            if (comment != null) {
-                // For each comment, allocate: space for the Offset, and for the
-                // string itself The "Offset" is actually a UUID and an uint64,
-                // total is size of 3 longs The string itself needs length of
-                // bytes plus one long for storing the string size Thus for each
-                // comment we need string byte length, plus 4 times size of long
-                totalAllocation +=
-                        comment.getBytes(StandardCharsets.UTF_8).length;
-                totalAllocation += (4 * sizeOfLong);
-                numberOfComments += 1;
-            }
-        }
-        // Add room for the 1st item, which is the number of comments
-        totalAllocation += sizeOfLong;
-
-        byte[] newCommentBytes = new byte[totalAllocation];
-        Serialization serialization = new Serialization(newCommentBytes);
-        serialization.putLong(numberOfComments);
+        AddressIterator addressIterator;
 
         Map<Long, ByteBlock> addrToBlockMap = GtirbUtil.getAddrToBlockMap(module);
+        Map<Offset, String> commentMap = new HashMap<>();
 
-        // Run through the comments again, this time adding to the comment data
         addressIterator = listing.getCommentAddressIterator(memory, true);
         while (addressIterator.hasNext()) {
             Address commentAddress = addressIterator.next();
@@ -292,22 +226,14 @@ public class ModuleBuilder {
                 if (block == null) {
                     continue;
                 }
-                // Now I need the block address so I can set the displacement to
-                // be the difference between the block start and the comment
-                // address Also need to UUID of the code or data block. Then I
-                // can write them.
-                Long blockAddress = block.getAddress();
-                Long offset = longAddress - blockAddress;
+
+                long blockAddress = block.getAddress();
+                long offset = longAddress - blockAddress;
                 UUID uuid = block.getUuid();
-                serialization.putUuid(uuid);
-                serialization.putLong(offset);
-                serialization.putString(commentString);
+                commentMap.put(new Offset(uuid, offset), commentString);
             }
         }
-        newAuxData.setData(ByteString.copyFrom(newCommentBytes));
-        String typeName = "mapping<Offset,string>";
-        newAuxData.setTypeNameBytes(ByteString.copyFromUtf8(typeName));
-        return newAuxData;
+        return new Comments(commentMap);
     }
 
     /**
@@ -425,10 +351,9 @@ public class ModuleBuilder {
     //  - OR, iterate through GTIRB symbols, use getSymbolAt() to get Ghidra's
     //    name for that symbol, and use that in place of Gtirb name.
     //
-    private void exportRenamedSymbols(com.grammatech.gtirb.Module module,
-                                      ModuleOuterClass.Module.Builder newModule) {
+    private void exportRenamedSymbols(Module module) {
         HashMap<String, String> renamedSymbols;
-        ArrayList<Long> sharedAddresses = new ArrayList<Long>();
+        ArrayList<Long> sharedAddresses = new ArrayList<>();
         // TODO not currently supporting adding new symbols.
         // addedSymbols.clear();
 
@@ -461,11 +386,8 @@ public class ModuleBuilder {
         renamedSymbols = findRenamedSymbols(sharedAddresses, symbolIndex);
 
         //  Iterate through gtirb symbols, changing names if needed.
+        ArrayList<Symbol> symbolList = new ArrayList<>();
         for (Symbol symbol : module.getSymbols()) {
-            SymbolOuterClass.Symbol.Builder newSymbol =
-                    SymbolOuterClass.Symbol.newBuilder();
-            SymbolOuterClass.Symbol protoSymbol = symbol.getProtoSymbol();
-            newSymbol.mergeFrom(protoSymbol);
             if (renamedSymbols.containsKey(symbol.getName())) {
                 String oldName = symbol.getName();
                 String newName = renamedSymbols.get(symbol.getName());
@@ -474,39 +396,35 @@ public class ModuleBuilder {
                     // Don't rename if the only difference is a dot prefix,
                     // that leads to massive renaming
                 } else {
-                    newSymbol.setName(renamedSymbols.get(symbol.getName()));
+                    symbol.setName(renamedSymbols.get(symbol.getName()));
                     Msg.info(this, "Renaming " + oldName + " to " + newName);
                 }
             }
-            newModule.addSymbols(newSymbol);
+            symbolList.add(symbol);
         }
+        module.setSymbols(symbolList);
     }
 
     /** Add Ghidra's symbols list to GTIRB. */
-    private void exportSymbols(com.grammatech.gtirb.Module module,
-                               ModuleOuterClass.Module.Builder newModule) {
-        if (module != null) {
-            exportRenamedSymbols(module, newModule);
-            return;
-        }
-
+    private void exportSymbols(Module module) {
+        ArrayList<Symbol> symbols = new ArrayList<>();
         for (ghidra.program.model.symbol.Symbol sym : program.getSymbolTable().getAllSymbols(false)) {
-            SymbolOuterClass.Symbol.Builder gtSym = SymbolOuterClass.Symbol.newBuilder();
-            ByteString refUuid = null;
-            gtSym.setUuid(GtirbUtil.uuidGenByteString());
-            gtSym.setName(sym.getName());
-            gtSym.setAtEnd(false);
+            Symbol gtSym = new Symbol(sym.getName(), module);
+            gtSym.setUuid(UUID.randomUUID());
+
+            UUID refUuid = null;
             if (!sym.isExternal()) {
-                refUuid = splitBlocksAtOffset(newModule, sym.getAddress().subtract(program.getImageBase()),
+                refUuid = splitBlocksAtOffset(module, sym.getAddress().subtract(program.getImageBase()),
                         false, 0);
             }
             if (refUuid != null)
-                gtSym.setReferentUuid(refUuid);
-            newModule.addSymbols(gtSym);
+                gtSym.setReferentByUuid(refUuid);
+            symbols.add(gtSym);
         }
+        module.setSymbols(symbols);
     }
 
-    private ByteString getEntryPointUUID(ModuleOuterClass.Module.Builder module) {
+    private CodeBlock getEntryPoint(Module module) {
         SymbolTable symbolTable = program.getSymbolTable();
         /* Ghidra standard loaders create an "entry" symbol for the entry point it gets from
          * the format header. This isn't perfect; it doesn't seem to work if the imported binary
@@ -520,9 +438,14 @@ public class ModuleBuilder {
                 continue;
             if (entrySym.getSymbolType() != SymbolType.FUNCTION)
                 continue;
-            for (SymbolOuterClass.Symbol symbol : module.getSymbolsList()) {
+            for (Symbol symbol : module.getSymbols()) {
                 if (symbol.getName().equals(entrySym.getName())) {
-                    return symbol.getReferentUuid();
+                    Node entryNode = symbol.getReferentUuid();
+                    if (entryNode instanceof CodeBlock) {
+                        return (CodeBlock) entryNode;
+                    } else {
+                        return null;
+                    }
                 }
             }
         }
@@ -530,60 +453,61 @@ public class ModuleBuilder {
     }
 
     /** Populate a GTIRB Module from Ghidra's program data. */
-    public ModuleOuterClass.Module.Builder
-    exportModule(com.grammatech.gtirb.Module module) throws ExporterException {
-        ModuleOuterClass.Module.Builder newModule =
-                ModuleOuterClass.Module.newBuilder();
+    public Module exportModule(com.grammatech.gtirb.Module module) throws ExporterException {
         ProgramModule programModule = program.getListing().getDefaultRootModule();
+        boolean isNewModule = false;
 
         // Export basic Module information
-        if (module != null) {
-            ModuleOuterClass.Module protoModule = module.getProtoModule();
-
-            newModule.setName(module.getName());
-            newModule.setUuid(protoModule.getUuid());
-            newModule.setBinaryPath(protoModule.getBinaryPath());
-            newModule.setPreferredAddr(protoModule.getPreferredAddr());
-            newModule.setRebaseDelta(protoModule.getRebaseDelta());
-            newModule.setFileFormat(protoModule.getFileFormat());
-            newModule.setIsa(protoModule.getIsa());
-            newModule.setEntryPoint(protoModule.getEntryPoint());
-            newModule.setByteOrder(protoModule.getByteOrder());
-        } else {
+        if (module == null) {
             String fileFormatDesc = program.getExecutableFormat();
             LanguageDescription lang = program.getLanguage().getLanguageDescription();
-            ModuleOuterClass.FileFormat format;
-            ModuleOuterClass.ISA isa;
+            Module.FileFormat format;
+            Module.ISA isa;
 
-            isa = ModuleOuterClass.ISA.forNumber(GtirbUtil.toISA(lang).ordinal());
-            format = ModuleOuterClass.FileFormat.forNumber(GtirbUtil.toFileFormat(fileFormatDesc).ordinal());
+            isNewModule = true;
 
-            if (isa == ModuleOuterClass.ISA.ISA_Undefined) {
+            isa = GtirbUtil.toISA(lang);
+            format = GtirbUtil.toFileFormat(fileFormatDesc);
+
+            if (isa == Module.ISA.ISA_Undefined) {
                 throw new ExporterException("Unsupported processor: " + lang.getLanguageID());
             }
-            if (format == ModuleOuterClass.FileFormat.Format_Undefined) {
+            if (format == Module.FileFormat.Format_Undefined) {
                 /* It may be useful in the future to let this plugin export anything that Ghidra
                    was able to import. If we choose to support that, we probably should add the
                    LanguageID string to an AuxData schema for Ghidra-specific information. */
                 throw new ExporterException("Unsupported source format: " + fileFormatDesc);
             }
 
-            newModule.setFileFormat(format);
-            newModule.setUuid(GtirbUtil.uuidGenByteString());
-            newModule.setName(program.getName());
-            newModule.setBinaryPath(program.getExecutablePath());
-            newModule.setPreferredAddr(program.getImageBase().getOffset());
-            newModule.setRebaseDelta(0);
-            newModule.setIsa(isa);
-            newModule.setByteOrder(program.getLanguage().isBigEndian() ?
-                    ModuleOuterClass.ByteOrder.BigEndian : ModuleOuterClass.ByteOrder.LittleEndian);
+            /* Current GTIRB API requires a non-null CodeBlock for Module constructor,
+             * but this will be replaced with setEntryPoint later. */
+            CodeBlock dummyCB = new CodeBlock(0, 0, 0, null);
+
+            module = new Module(
+                    program.getExecutablePath(),
+                    program.getImageBase().getOffset(),
+                    0, format, isa,
+                    program.getName(),
+                    null, null, null,
+                    dummyCB,
+                    null
+            );
+            //module.setName(program.getName());
+            //module.setBinaryPath(program.getExecutablePath());
+            //module.setPreferredAddr(program.getImageBase().getOffset());
+            //module.setRebaseDelta(0);
+            //module.setFileFormat(format);
+            //module.setIsa(isa);
+            module.setByteOrder(program.getLanguage().isBigEndian() ?
+                    Module.ByteOrder.BigEndian : Module.ByteOrder.LittleEndian);
         }
 
         // Export sections
-        if (module != null) {
+        ArrayList<Section> sectionList = new ArrayList<>();
+        if (!isNewModule) {
             for (Section section : module.getSections()) {
                 MemoryBlock memoryBlock = program.getMemory().getBlock(section.getName());
-                newModule.addSections(exportSection(section, memoryBlock));
+                sectionList.add(exportSection(section, memoryBlock, module));
             }
         } else {
             for (Group group : programModule.getChildren()) {
@@ -591,47 +515,24 @@ public class ModuleBuilder {
                 if (memoryBlock.getName().equals(MemoryBlock.EXTERNAL_BLOCK_NAME)) {
                     continue;
                 }
-                newModule.addSections(exportSection(null, memoryBlock));
+                sectionList.add(exportSection(null, memoryBlock, module));
             }
         }
+        module.setSections(sectionList);
 
         // Export symbols
-        exportSymbols(module, newModule);
-        if (module == null)
-            newModule.setEntryPoint(getEntryPointUUID(newModule));
-
-        if (module != null) {
-            // export proxy blocks
-            for (ProxyBlock proxyBlock : module.getProxyBlocks()) {
-                ProxyBlockOuterClass.ProxyBlock.Builder newProxyBlock =
-                        exportProxyBlock(proxyBlock);
-                newModule.addProxies(newProxyBlock);
-            }
-
-            //
-            // Special handling of comments here because that is first to be
-            // implemented If AuxData (in original gtirb) already had comments,
-            // comments will get exported But if it didn't (for example, added by
-            // Ghidra), then comments have to be exported explicitly
-            boolean alreadyHasComments = false;
-            for (Map.Entry<String, AuxData> auxDataEntry : module.getAuxDataMap().entrySet()) {
-                String auxName = auxDataEntry.getKey();
-                AuxData auxData = auxDataEntry.getValue();
-
-                if (auxName.equals("comments"))
-                    alreadyHasComments = true;
-                AuxDataOuterClass.AuxData.Builder newAuxData = auxData.toProtobuf();
-                AuxDataOuterClass.AuxData builtAuxData = newAuxData.build();
-                newModule.putAuxData(auxName, builtAuxData);
-            }
-
-            if (!alreadyHasComments) {
-                AuxDataOuterClass.AuxData.Builder newAuxData = exportComments(module);
-                AuxDataOuterClass.AuxData builtAuxData = newAuxData.build();
-                newModule.putAuxData("comments", builtAuxData);
-            }
+        if (isNewModule) {
+            exportSymbols(module);
+            module.setEntryPoint(getEntryPoint(module));
+        } else {
+            exportRenamedSymbols(module);
         }
 
-        return newModule;
+        boolean alreadyHasComments = module.getAuxDataMap().containsKey("comments");
+        if (!alreadyHasComments) {
+            module.setComments(exportComments(module));
+        }
+
+        return module;
     }
 }

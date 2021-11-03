@@ -13,26 +13,17 @@
  */
 package com.grammatech.gtirb_ghidra_plugin;
 
-import com.google.protobuf.ByteString;
-import com.grammatech.gtirb.*;
+import com.grammatech.gtirb.ByteBlock;
+import com.grammatech.gtirb.ByteInterval;
 import com.grammatech.gtirb.Module;
+import com.grammatech.gtirb.Section;
+import com.grammatech.gtirb.Symbol;
 import ghidra.program.model.lang.LanguageDescription;
-import ghidra.program.model.listing.Program;
-
-import java.security.SecureRandom;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
 
 public class GtirbUtil {
-
-    static SecureRandom random = new SecureRandom();
-
-    public static ByteString uuidGenByteString() {
-        byte[] uuid = new byte[16];
-        random.nextBytes(uuid);
-        return ByteString.copyFrom(uuid);
-    }
 
     public static Symbol getSymbolByReferent(Module module, UUID referentUuid) {
         for (Symbol symbol : module.getSymbols()) {
@@ -55,16 +46,6 @@ public class GtirbUtil {
             }
         }
         return addrToBlockMap;
-    }
-
-    public static final boolean isGtIrb(Program program) {
-        if (program != null) {
-            if (program.getExecutablePath().endsWith(
-                    GtirbConstants.GTIRB_EXTENSION)) {
-                return true;
-            }
-        }
-        return false;
     }
 
     public static String getElfSectionType(int sh_type) {

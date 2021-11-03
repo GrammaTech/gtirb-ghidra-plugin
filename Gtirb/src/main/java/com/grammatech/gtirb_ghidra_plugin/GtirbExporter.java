@@ -13,12 +13,8 @@
  */
 package com.grammatech.gtirb_ghidra_plugin;
 
-import com.google.protobuf.ByteString;
 import com.grammatech.gtirb.Module;
 import com.grammatech.gtirb.*;
-import com.grammatech.gtirb.proto.CFGOuterClass;
-import com.grammatech.gtirb.proto.IROuterClass;
-import com.grammatech.gtirb.proto.ModuleOuterClass;
 import ghidra.app.util.DomainObjectService;
 import ghidra.app.util.Option;
 import ghidra.app.util.OptionException;
@@ -33,6 +29,7 @@ import ghidra.util.task.TaskMonitor;
 
 import java.io.*;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.UUID;
 
@@ -53,55 +50,44 @@ public class GtirbExporter extends Exporter {
     }
 
     /** Create a new GTIRB IR based on Ghidra's program data and an optional input IR. */
-    private IROuterClass.IR exportProgramToIR(IR ir, TaskMonitor monitor) {
-        // Start building a new IR
-        IROuterClass.IR.Builder newIR = IROuterClass.IR.newBuilder();
-
-        newIR.setVersion(Version.gtirbProtobufVersion);
-
+    private IR exportProgramToIR(IR ir, TaskMonitor monitor) {
         ModuleBuilder moduleBuilder = new ModuleBuilder(program);
         CFGBuilder cfgBuilder = new CFGBuilder(program);
 
         if (ir == null) {
-            newIR.setUuid(GtirbUtil.uuidGenByteString());
+            ir = new IR();
+            ir.setUuid(UUID.randomUUID());
 
-            ModuleOuterClass.Module.Builder newModule;
+            Module module;
             try {
-                newModule = moduleBuilder.exportModule(null);
-                CFGOuterClass.CFG.Builder newCFG = cfgBuilder.exportCFG(null, newModule);
+                module = moduleBuilder.exportModule(null);
+                CFG cfg = cfgBuilder.exportCFG(null, module);
 
-                newIR.addModules(newModule);
-                newIR.setCfg(newCFG);
+                ir.setModules(Collections.singletonList(module));
+                ir.setCfg(cfg);
             } catch (ExporterException e) {
                 Msg.error(this, "GTIRB export failed: " + e);
                 return null;
             }
 
         } else {
-            IROuterClass.IR protoIR = ir.getProtoIR();
-
-            // IR has UUID, version, and AuxData.
-            newIR.setUuid(protoIR.getUuid());
-
-            ModuleOuterClass.Module.Builder newModule;
+            Module module;
             try {
-                newModule = moduleBuilder.exportModule(ir.getModules().get(0));
+                module = moduleBuilder.exportModule(ir.getModules().get(0));
 
-                CFGOuterClass.CFG.Builder newCFG =
-                        cfgBuilder.exportCFG(ir.getProtoIR().getCfg(), newModule);
+                CFG cfg = cfgBuilder.exportCFG(ir.getCfg(), module);
 
-                newIR.addModules(newModule);
-                newIR.setCfg(newCFG);
+                ir.setModules(Collections.singletonList(module));
+                ir.setCfg(cfg);
             } catch (ExporterException e) {
                 Msg.error(this, "GTIRB export failed: " + e);
                 return null;
             }
-
-            // Add the IR-level AuxData, straight from the original
-            newIR.putAllAuxData(protoIR.getAuxDataMap());
         }
 
-        return newIR.build();
+        ir.setVersion(Version.gtirbProtobufVersion);
+
+        return ir;
     }
 
     //
@@ -150,17 +136,20 @@ public class GtirbExporter extends Exporter {
             }
             if (inputStream != null)
                 ir = IR.loadFile(inputStream);
+        } else {
+            // Create a copy of the original Gtirb
+            ir = new IR(ir.getProtoIR());
         }
 
         // Open output file
         FileOutputStream fos = null;
         boolean writeSuccess = false;
-        IROuterClass.IR newIR = exportProgramToIR(ir, monitor);
-        if (newIR == null)
+        ir = exportProgramToIR(ir, monitor);
+        if (ir == null)
             return false;
         try {
             fos = new FileOutputStream(file);
-            newIR.writeTo(fos);
+            ir.saveFile(fos);
             writeSuccess = true;
         } catch (IOException ie) {
             Msg.error(this, "Error writing file: " + ie);

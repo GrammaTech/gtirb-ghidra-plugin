@@ -79,16 +79,11 @@ public class CFGBuilder {
         // for every block, add an entry in the address to block map
         // NOTE: These are Gtirb addresses, not load addresses.
         // TODO: Sorting by address would make this a much more efficient operation.
-        Module module = new Module(protoModule.build());
-        module.initializeSectionList();
+        Module module = Module.fromProtobuf(protoModule.build(), null);
         for (Section section : module.getSections()) {
             for (ByteInterval byteInterval : section.getByteIntervals()) {
-                for (Block block : byteInterval.getBlockList()) {
-                    com.grammatech.gtirb.CodeBlock codeBlock = block.getCodeBlock();
-                    if (codeBlock != null) {
-                        Long blockAddr = codeBlock.getBlock().getByteInterval().getAddress() + codeBlock.getOffset();
-                        addressToBlock.put(blockAddr, codeBlock.getUuid());
-                    }
+                for (ByteBlock block : byteInterval.getBlockList()) {
+                    addressToBlock.put(block.getAddress(), block.getUuid());
                 }
             }
         }

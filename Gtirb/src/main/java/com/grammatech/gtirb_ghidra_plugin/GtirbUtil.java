@@ -14,12 +14,14 @@
 package com.grammatech.gtirb_ghidra_plugin;
 
 import com.google.protobuf.ByteString;
+import com.grammatech.gtirb.*;
 import com.grammatech.gtirb.Module;
-import com.grammatech.gtirb.Symbol;
 import ghidra.program.model.lang.LanguageDescription;
 import ghidra.program.model.listing.Program;
 
 import java.security.SecureRandom;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.UUID;
 
 public class GtirbUtil {
@@ -34,14 +36,25 @@ public class GtirbUtil {
 
     public static Symbol getSymbolByReferent(Module module, UUID referentUuid) {
         for (Symbol symbol : module.getSymbols()) {
-            if (symbol.hasReferent()) {
-                UUID symReferentUuid = symbol.getReferentByUuid();
-                if (referentUuid.equals(symReferentUuid)) {
-                    return symbol;
-                }
+            UUID symReferentUuid = symbol.getReferentByUuid();
+            if (referentUuid.equals(symReferentUuid)) {
+                return symbol;
             }
         }
         return null;
+    }
+
+    /** Generates a map to help look up blocks by address. */
+    static Map<Long, ByteBlock> getAddrToBlockMap(Module module) {
+        Map<Long, ByteBlock> addrToBlockMap = new HashMap<>();
+        for (Section section : module.getSections()) {
+            for (ByteInterval bi : section.getByteIntervals()) {
+                for (ByteBlock block : bi.getBlockList()) {
+                    addrToBlockMap.put(block.getAddress(), block);
+                }
+            }
+        }
+        return addrToBlockMap;
     }
 
     public static final boolean isGtIrb(Program program) {

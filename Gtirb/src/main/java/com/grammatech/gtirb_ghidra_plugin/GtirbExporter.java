@@ -52,43 +52,6 @@ public class GtirbExporter extends Exporter {
         super("GTIRB Exporter", "gtirb", null);
     }
 
-
-    // Should be moved to Util or somewhere that it can be shared.
-    //
-    // Get the address (offset from load address) of the block
-    // with the given UUID.
-    //
-    //   Block is the UUID of a GTIRB Code, Data, or Proxy block.
-    //   Address returned is the offset from base or load address.
-    //
-    //   This function gets the referred to block if possible, and
-    //   computes the offset and returns it. If not possible, returns 0.
-    //
-    long getBlockAddress(Module module, UUID blockUuid) {
-        if (blockUuid.equals(com.grammatech.gtirb.Util.NIL_UUID)) {
-            return 0L;
-        }
-        Node uuidNode = Node.getByUuid(blockUuid);
-        if (uuidNode == null) {
-            return 0L;
-        }
-        if (uuidNode instanceof com.grammatech.gtirb.CodeBlock) {
-            com.grammatech.gtirb.CodeBlock codeBlock = (com.grammatech.gtirb.CodeBlock)uuidNode;
-            return (codeBlock.getBlock().getByteInterval().getAddress() +
-                    codeBlock.getOffset());
-        } else if (uuidNode instanceof DataBlock) {
-            DataBlock dataBlock = (DataBlock)uuidNode;
-            return (dataBlock.getBlock().getByteInterval().getAddress() +
-                    dataBlock.getOffset());
-        } else if (uuidNode instanceof ProxyBlock) {
-            Symbol symbol = GtirbUtil.getSymbolByReferent(module, blockUuid);
-            if (symbol != null) {
-                return (symbol.getAddress());
-            }
-        }
-        return 0L;
-    }
-
     /** Create a new GTIRB IR based on Ghidra's program data and an optional input IR. */
     private IROuterClass.IR exportProgramToIR(IR ir, TaskMonitor monitor) {
         // Start building a new IR
@@ -122,7 +85,7 @@ public class GtirbExporter extends Exporter {
 
             ModuleOuterClass.Module.Builder newModule;
             try {
-                newModule = moduleBuilder.exportModule(ir.getModule());
+                newModule = moduleBuilder.exportModule(ir.getModules().get(0));
 
                 CFGOuterClass.CFG.Builder newCFG =
                         cfgBuilder.exportCFG(ir.getProtoIR().getCfg(), newModule);

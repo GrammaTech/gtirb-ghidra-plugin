@@ -35,6 +35,27 @@ public class ModuleBuilder {
         this.program = program;
     }
 
+    // TODO remove this when API's Node.getByUuid is fixed
+    private HashMap<UUID, Node> nodeMap;
+    private void populateNodeMap(Module module) {
+        nodeMap = new HashMap<>();
+        for (Section section : module.getSections()) {
+            nodeMap.put(section.getUuid(), section);
+            for (ByteInterval byteInterval : section.getByteIntervals()) {
+                nodeMap.put(byteInterval.getUuid(), byteInterval);
+                for (ByteBlock byteBlock : byteInterval.getBlockList()) {
+                    nodeMap.put(byteBlock.getUuid(), byteBlock);
+                }
+            }
+        }
+        for (ProxyBlock proxyBlock : module.getProxyBlocks()) {
+            nodeMap.put(proxyBlock.getUuid(), proxyBlock);
+        }
+        for (Symbol symbol : module.getSymbols()) {
+            nodeMap.put(symbol.getUuid(), symbol);
+        }
+    }
+
     /** Get a block that starts at the specified address, splitting to make a new block if necessary. */
     public static ByteString splitBlocksAtOffset(ModuleOuterClass.Module.Builder module, long offset,
                                                  boolean forceExec, long sizeHint) {
@@ -217,7 +238,7 @@ public class ModuleBuilder {
     //
     // exportComments
     //
-    private AuxDataOuterClass.AuxData.Builder exportComments(AuxData auxData, Module module) {
+    private AuxDataOuterClass.AuxData.Builder exportComments(Module module) {
 
         AuxDataOuterClass.AuxData.Builder newAuxData =
                 AuxDataOuterClass.AuxData.newBuilder();
@@ -255,6 +276,8 @@ public class ModuleBuilder {
         Serialization serialization = new Serialization(newCommentBytes);
         serialization.putLong(numberOfComments);
 
+        Map<Long, ByteBlock> addrToBlockMap = GtirbUtil.getAddrToBlockMap(module);
+
         // Run through the comments again, this time adding to the comment data
         addressIterator = listing.getCommentAddressIterator(memory, true);
         while (addressIterator.hasNext()) {
@@ -265,7 +288,7 @@ public class ModuleBuilder {
             if (commentString != null) {
                 long imageBase = this.program.getImageBase().getOffset();
                 long longAddress = commentAddress.getOffset() - imageBase;
-                Block block = module.getBlockFromAddress(longAddress);
+                ByteBlock block = addrToBlockMap.get(longAddress);
                 if (block == null) {
                     continue;
                 }
@@ -273,17 +296,9 @@ public class ModuleBuilder {
                 // be the difference between the block start and the comment
                 // address Also need to UUID of the code or data block. Then I
                 // can write them.
-                Long blockAddress =
-                        block.getByteInterval().getAddress() + block.getOffset();
+                Long blockAddress = block.getAddress();
                 Long offset = longAddress - blockAddress;
-                UUID uuid;
-                if (block.getCodeBlock() != null) {
-                    uuid = block.getCodeBlock().getUuid();
-                } else if (block.getDataBlock() != null) {
-                    uuid = block.getDataBlock().getUuid();
-                } else {
-                    uuid = com.grammatech.gtirb.Util.NIL_UUID;
-                }
+                UUID uuid = block.getUuid();
                 serialization.putUuid(uuid);
                 serialization.putLong(offset);
                 serialization.putString(commentString);
@@ -303,19 +318,11 @@ public class ModuleBuilder {
         long symbolOffset = 0;
         UUID referentUuid = symbol.getReferentByUuid();
         if (!referentUuid.equals(com.grammatech.gtirb.Util.NIL_UUID)) {
-            Node symbolNode = Node.getByUuid(symbol.getReferentByUuid());
+            Node symbolNode = nodeMap.get(symbol.getReferentByUuid());
             // Address here is really offset from image base
             // Only have address if code or data, anything else stays 0.
-            if (symbolNode instanceof com.grammatech.gtirb.CodeBlock) {
-                com.grammatech.gtirb.CodeBlock codeBlock = (com.grammatech.gtirb.CodeBlock)symbolNode;
-                symbolOffset =
-                        codeBlock.getBlock().getByteInterval().getAddress() +
-                                codeBlock.getOffset();
-            } else if (symbolNode instanceof DataBlock) {
-                DataBlock dataBlock = (DataBlock)symbolNode;
-                symbolOffset =
-                        dataBlock.getBlock().getByteInterval().getAddress() +
-                                dataBlock.getOffset();
+            if (symbolNode instanceof ByteBlock) {
+                symbolOffset = ((ByteBlock) symbolNode).getAddress();
             } else {
                 Msg.info(this, "Unable to get address of " + symbol.getName() +
                         ": referent is not a code or data block");
@@ -430,6 +437,7 @@ public class ModuleBuilder {
 
         // Null address for symbols that don't have one, like externals
         Long noAddress = imageOffset;
+        populateNodeMap(module);
 
         // Create a hashmap with all the Gtirb symbols, indexed by address
         HashMap<Long, Symbol> symbolIndex = new HashMap<>();
@@ -496,27 +504,6 @@ public class ModuleBuilder {
                 gtSym.setReferentUuid(refUuid);
             newModule.addSymbols(gtSym);
         }
-    }
-
-    //
-    // exportAuxData
-    //
-    private AuxDataOuterClass.AuxData.Builder exportAuxData(AuxData auxData,
-                                                            String auxDataType,
-                                                            Module module) {
-        if (auxDataType.equals("comments")) {
-            return exportComments(auxData, module);
-        }
-        AuxDataOuterClass.AuxData.Builder newAuxData =
-                AuxDataOuterClass.AuxData.newBuilder();
-        AuxDataOuterClass.AuxData oldAuxData =
-                auxData.getProtoAuxData(auxDataType);
-        // The following accomplishes the same as mergeFrom.
-        // Just trying it to be make sure I understand
-        byte[] oldAuxDataBytes = oldAuxData.getData().toByteArray();
-        newAuxData.setData(ByteString.copyFrom(oldAuxDataBytes));
-        newAuxData.setTypeName(oldAuxData.getTypeName());
-        return newAuxData;
     }
 
     private ByteString getEntryPointUUID(ModuleOuterClass.Module.Builder module) {
@@ -615,7 +602,7 @@ public class ModuleBuilder {
 
         if (module != null) {
             // export proxy blocks
-            for (ProxyBlock proxyBlock : module.getProxyBlockList()) {
+            for (ProxyBlock proxyBlock : module.getProxyBlocks()) {
                 ProxyBlockOuterClass.ProxyBlock.Builder newProxyBlock =
                         exportProxyBlock(proxyBlock);
                 newModule.addProxies(newProxyBlock);
@@ -627,19 +614,19 @@ public class ModuleBuilder {
             // comments will get exported But if it didn't (for example, added by
             // Ghidra), then comments have to be exported explicitly
             boolean alreadyHasComments = false;
-            Set<String> auxDataTypes = module.getAuxData().getAuxDataTypes();
-            for (String auxDataType : auxDataTypes) {
-                if (auxDataType.equals("comments"))
+            for (Map.Entry<String, AuxData> auxDataEntry : module.getAuxDataMap().entrySet()) {
+                String auxName = auxDataEntry.getKey();
+                AuxData auxData = auxDataEntry.getValue();
+
+                if (auxName.equals("comments"))
                     alreadyHasComments = true;
-                AuxDataOuterClass.AuxData.Builder newAuxData = exportAuxData(
-                        module.getAuxData(), auxDataType, module);
+                AuxDataOuterClass.AuxData.Builder newAuxData = auxData.toProtobuf();
                 AuxDataOuterClass.AuxData builtAuxData = newAuxData.build();
-                newModule.putAuxData(auxDataType, builtAuxData);
+                newModule.putAuxData(auxName, builtAuxData);
             }
 
-            if (alreadyHasComments == false) {
-                AuxDataOuterClass.AuxData.Builder newAuxData =
-                        exportAuxData(module.getAuxData(), "comments", module);
+            if (!alreadyHasComments) {
+                AuxDataOuterClass.AuxData.Builder newAuxData = exportComments(module);
                 AuxDataOuterClass.AuxData builtAuxData = newAuxData.build();
                 newModule.putAuxData("comments", builtAuxData);
             }

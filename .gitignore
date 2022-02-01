@@ -5,3 +5,4 @@ Gtirb/dist
 Gtirb/lib/*.jar
 gtirb-src
 protobuf
+gradle-*

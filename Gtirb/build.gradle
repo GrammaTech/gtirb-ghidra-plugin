@@ -21,7 +21,8 @@ repositories {
 }
 dependencies {
     // Expected libraries: protobuf-java-3.*.jar, gtirb_api-1.*.jar
-    compile fileTree(dir: 'lib', include: '*.jar')
+    implementation 'com.google.protobuf:protobuf-java:3.11.1'
+    implementation fileTree(dir: 'lib', include: '*.jar')
 }
 //----------------------START "DO NOT MODIFY" SECTION------------------------------
 def ghidraInstallDir

@@ -1,8 +1,8 @@
 FROM ubuntu:20.04
 
-ENV GHIDRA_DOWNLOAD_SHA 1ce9bdf2d7f6bdfe5dccd06da828af31bc74acfd800f71ade021d5211e820d5e
+ENV GHIDRA_DOWNLOAD_SHA ac96fbdde7f754e0eb9ed51db020e77208cdb12cf58c08657a2ab87cb2694940
 ENV GHIDRA_DOWNLOAD_URL \
-https://github.com/NationalSecurityAgency/ghidra/releases/download/Ghidra_10.0.4_build/ghidra_10.0.4_PUBLIC_20210928.zip
+https://github.com/NationalSecurityAgency/ghidra/releases/download/Ghidra_10.1.2_build/ghidra_10.1.2_PUBLIC_20220125.zip
 ENV GHIDRA_INSTALL_DIR /ghidra
 
 #
@@ -12,7 +12,7 @@ ENV GHIDRA_INSTALL_DIR /ghidra
 RUN ln -fs /usr/share/zoneinfo/America/New_York /etc/localtime \
     && apt-get update && apt-get install -y --no-install-recommends \
     fontconfig libxrender1 libxtst6 libxi6 wget unzip git openjdk-11-jdk gnupg cmake \
-    protobuf-compiler libprotobuf-dev build-essential
+    protobuf-compiler libprotobuf-dev build-essential maven
 
 #
 # Download Ghidra and install it to /ghidra
@@ -33,12 +33,12 @@ RUN wget -O - https://download.grammatech.com/gtirb/files/apt-repo/conf/apt.gpg.
     && apt-get install -y libgtirb gtirb-pprinter ddisasm
 
 #
-# Install Gradle. Ghidra 10.0 seems to require plugins be built with Gradle 5.1 and breaks with 7.0+.
+# Install Gradle. Ghidra 10.1.2 requires Gradle 6.8+
 #
-RUN wget --progress=bar:force -O /tmp/gradle.zip https://services.gradle.org/distributions/gradle-5.1.1-bin.zip \
+RUN wget --progress=bar:force -O /tmp/gradle.zip https://services.gradle.org/distributions/gradle-7.3.3-bin.zip \
     && unzip -d /opt /tmp/gradle.zip \
     && rm /tmp/gradle.zip \
-    && ln -s /opt/gradle-5.1.1/bin/gradle /usr/local/bin/
+    && ln -s /opt/gradle-7.3.3/bin/gradle /usr/local/bin/
 
 RUN mkdir /workspace
 
@@ -59,7 +59,7 @@ RUN git clone https://github.com/GrammaTech/gtirb.git /workspace/gtirb \
 ADD . /workspace/gtirb-ghidra-plugin
 RUN cd /workspace/gtirb-ghidra-plugin/Gtirb \
     && rm -f lib/*.jar dist/*.zip \
-    && cp /workspace/gtirb/build/java/*.jar lib/ \
+    && cp /workspace/gtirb/build/java/target/*.jar lib/ \
     && gradle \
     && unzip -d ${GHIDRA_INSTALL_DIR}/Ghidra/Extensions/ dist/*.zip
 

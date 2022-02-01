@@ -27,7 +27,7 @@ public class GtirbUtil {
 
     public static Symbol getSymbolByReferent(Module module, UUID referentUuid) {
         for (Symbol symbol : module.getSymbols()) {
-            UUID symReferentUuid = symbol.getReferentByUuid();
+            UUID symReferentUuid = symbol.getReferentUuid();
             if (referentUuid.equals(symReferentUuid)) {
                 return symbol;
             }
@@ -41,7 +41,8 @@ public class GtirbUtil {
         for (Section section : module.getSections()) {
             for (ByteInterval bi : section.getByteIntervals()) {
                 for (ByteBlock block : bi.getBlockList()) {
-                    addrToBlockMap.put(block.getAddress(), block);
+                    block.getAddress().ifPresent(
+                        (blockAddr) -> addrToBlockMap.put(blockAddr, block));
                 }
             }
         }
@@ -101,59 +102,66 @@ public class GtirbUtil {
         return retval;
     }
 
-    /** Translate a Ghidra file format description string to its corresponding GTIRB file format enum. */
+    /**
+     * Translate a Ghidra file format description string to its corresponding
+     * GTIRB file format enum.
+     */
     public static Module.FileFormat toFileFormat(String fileFormatDesc) {
         Module.FileFormat format = Module.FileFormat.Format_Undefined;
 
         switch (fileFormatDesc) {
-            case "Executable and Linking Format (ELF)":
-                format = Module.FileFormat.ELF;
-                break;
-            case "Portable Executable (PE)":
-                format = Module.FileFormat.PE;
-                break;
-            case "Common Object File Format (COFF)":
-                // Should "MS Common Object File Format (COFF)" be included here too?
-                format = Module.FileFormat.COFF;
-            case "Mac OS X Mach-O":
-                format = Module.FileFormat.MACHO;
-                break;
+        case "Executable and Linking Format (ELF)":
+            format = Module.FileFormat.ELF;
+            break;
+        case "Portable Executable (PE)":
+            format = Module.FileFormat.PE;
+            break;
+        case "Common Object File Format (COFF)":
+            // Should "MS Common Object File Format (COFF)" be included here
+            // too?
+            format = Module.FileFormat.COFF;
+        case "Mac OS X Mach-O":
+            format = Module.FileFormat.MACHO;
+            break;
         }
         return format;
     }
 
-    /** Translate a Ghidra LanguageDescription to its corresponding GTIRB ISA enum. */
+    /**
+     * Translate a Ghidra LanguageDescription to its corresponding GTIRB ISA
+     * enum.
+     */
     public static Module.ISA toISA(LanguageDescription lang) {
         Module.ISA isa = Module.ISA.ISA_Undefined;
         switch (lang.getProcessor().toString()) {
-            case "x86":
-                if (lang.getSize() == 32) {
-                    isa = Module.ISA.IA32;
-                } else if (lang.getSize() == 64) {
-                    isa = Module.ISA.X64;
-                }
-                break;
-            case "ARM":
-                if (lang.getSize() == 32) {
-                    isa = Module.ISA.ARM;
-                } else if (lang.getSize() == 64) {
-                    isa = Module.ISA.ARM64;
-                }
-                break;
-            case "PowerPC":
-                if (lang.getSize() == 32) {
-                    isa = Module.ISA.PPC32;
-                } else if (lang.getSize() == 64) {
-                    isa = Module.ISA.PPC64;
-                }
-                break;
-            case "MIPS":
-                if (lang.getSize() == 32) {
-                    isa = Module.ISA.MIPS32;
-                } else if (lang.getSize() == 64) {
-                    isa = Module.ISA.MIPS64;
-                }
-                break;
+        case "x86":
+            if (lang.getSize() == 32) {
+                isa = Module.ISA.IA32;
+            } else if (lang.getSize() == 64) {
+                isa = Module.ISA.X64;
+            }
+            break;
+        case "ARM":
+            if (lang.getSize() == 32) {
+                isa = Module.ISA.ARM;
+            } else if (lang.getSize() == 64) {
+                isa = Module.ISA.ARM64;
+            }
+            break;
+        case "PowerPC":
+            if (lang.getSize() == 32) {
+                isa = Module.ISA.PPC32;
+            } else if (lang.getSize() == 64) {
+                isa = Module.ISA.PPC64;
+            }
+            break;
+        case "MIPS":
+            if (lang.getSize() == 32) {
+                isa = Module.ISA.MIPS32;
+            } else if (lang.getSize() == 64) {
+                isa = Module.ISA.MIPS64;
+            }
+            break;
         }
         return isa;
     }

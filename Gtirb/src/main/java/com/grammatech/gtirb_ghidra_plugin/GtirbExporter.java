@@ -39,7 +39,7 @@ import java.util.UUID;
  */
 @SuppressWarnings("unused")
 public class GtirbExporter extends Exporter {
-    
+
     private Program program;
     private boolean enableDebugMessages = false;
 
@@ -49,14 +49,16 @@ public class GtirbExporter extends Exporter {
         super("GTIRB Exporter", "gtirb", null);
     }
 
-    /** Create a new GTIRB IR based on Ghidra's program data and an optional input IR. */
+    /**
+     * Create a new GTIRB IR based on Ghidra's program data and an optional
+     * input IR.
+     */
     private IR exportProgramToIR(IR ir, TaskMonitor monitor) {
         ModuleBuilder moduleBuilder = new ModuleBuilder(program);
         CFGBuilder cfgBuilder = new CFGBuilder(program);
 
         if (ir == null) {
             ir = new IR();
-            ir.setUuid(UUID.randomUUID());
 
             Module module;
             try {
@@ -131,7 +133,8 @@ public class GtirbExporter extends Exporter {
                 }
                 Msg.info(this, "Loading GTIRB file " + fileName);
             } else {
-                // This program was imported with a different Ghidra Loader, not originally a GTIRB.
+                // This program was imported with a different Ghidra Loader, not
+                // originally a GTIRB.
                 Msg.info(this, "Creating a new GTIRB file");
             }
             if (inputStream != null)
@@ -174,7 +177,7 @@ public class GtirbExporter extends Exporter {
         // Currently no options. Comment this out, otherwise it shows up
         //  as an option dialogue when exporting
         // TODO: If this exporter has custom options, add them to 'list'
-        //list.add(new Option("Option name goes here",
+        // list.add(new Option("Option name goes here",
         //                    "Default option value goes here"));
 
         return list;

@@ -9,6 +9,7 @@ cd "$PLUGIN_REPO"
 
 {
     cmake --version &&
+    mvn --version &&
     g++ --version &&
     make --version &&
     git --version &&
@@ -18,16 +19,18 @@ cd "$PLUGIN_REPO"
     autoconf --version &&
     automake --version &&
     libtoolize --version
-} > /dev/null ||
-sudo apt-get install -y cmake build-essential git wget unzip \
-protobuf-compiler libprotobuf-dev autoconf automake libtool ||
-{
+} > /dev/null 2>&1 || {
+    echo "Attempting to install missing packages from apt..."
+    sudo apt-get install -y cmake maven build-essential git wget unzip \
+    protobuf-compiler libprotobuf-dev autoconf automake libtool
+} || {
     # If the user follows these instructions, the script can be used on systems
     # that lack apt-get or sudo.
     echo '
 Unable to install required packages with apt-get.
 You must install the following packages before running this script:
-cmake g++ make git wget unzip protoc libprotobuf autoconf automake libtool'
+cmake maven g++ make git wget unzip protoc libprotobuf
+autoconf automake libtool'
     exit 1
 }
 
@@ -103,19 +106,32 @@ git clone https://github.com/GrammaTech/gtirb.git gtirb-src -b $GTIRB_BRANCH || 
 cd gtirb-src &&
 $protoc --java_out=java --proto_path=proto proto/*.proto || exit
 
-mkdir build &&
-cd build &&
-cmake "${cmake_args[@]}" .. &&
-make || exit
+if [[ $FORCE_CMAKE ]]; then
+    mkdir build &&
+    cd build &&
+    cmake "${cmake_args[@]}" .. &&
+    make || exit
+    # Install the API JAR but ignore javadoc and sources
+    GTIRB_JAR=()
+    for jarfile in $PWD/java/target/gtirb_api-*.jar; do
+        if [[ $jarfile != *-javadoc.jar && $jarfile != *-sources.jar ]]; then
+            GTIRB_JAR+=("$jarfile")
+        fi
+    done
+else
+    cd java &&
+    gradle build || exit
+    GTIRB_JAR=($PWD/build/libs/*.jar)
+fi
 
 pwd
-if [ ! -f java/gtirb_api-*.jar -o ! -f java/protobuf-java-*.jar ]; then
-    echo "Error: Unable to find the necessary JAR libraries"
+if [[ ! -f $GTIRB_JAR ]]; then
+    echo "Error: Unable to find the necessary JAR library"
     exit 1
 fi
 
 cd "$PLUGIN_REPO" &&
 rm -f Gtirb/lib/*.jar &&
-install -v gtirb-src/build/java/*.jar Gtirb/lib/ || exit
+install -v "$GTIRB_JAR" Gtirb/lib/ || exit
 
 echo "Successfully finished building Java libs"

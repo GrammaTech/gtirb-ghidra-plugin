@@ -1,10 +1,10 @@
 #!/bin/bash
 cd $(realpath $(dirname "${BASH_SOURCE[0]}"))
 
-# Build with Gradle
-"$HOME/.local/gradle-5.1.1/bin/gradle" "$@" || exit
-
 . ../scripts/ghidra-defs.sh
+
+# Build with Gradle
+gradle "$@" || exit
 
 if [[ -z "$GHIDRA_INSTALL_DIR" ]]; then
     echo "Error: GHIDRA_INSTALL_DIR environment variable is not set."

@@ -25,6 +25,35 @@ if [[ -z "$GHIDRA_INSTALL_DIR" ]] && [[ -f "$GRADLE_PROPERTIES_GLOBAL" ]]; then
     . "$GRADLE_PROPERTIES_GLOBAL"
 fi
 
+# Gradle wrapper that attempts to find a good gradle install
+find_gradle() {
+    # Find the most recent gradle 7.x in PLUGIN_REPO or ~/.local
+    GRADLE_DIR=$(ls -1d $PLUGIN_REPO/gradle-7.* 2>/dev/null | tail -n 1)
+    if [[ -z "$GRADLE_DIR" ]]; then
+        GRADLE_DIR="$(ls -1d $HOME/.local/gradle-7.* 2>/dev/null | tail -n 1)"
+    fi
+
+    # If no extracted release was found, check the gradle version in $PATH
+    if [[ -z "$GRADLE_DIR" ]]; then
+        if ! command gradle --version 2>/dev/null | grep -Fq "Gradle 7."; then
+            echo -e "
+Error: Gradle 7 is not installed.
+Please download a Gradle 7 release from https://gradle.org/releases/ and extract it to:
+  $PLUGIN_REPO/" >&2
+            return 1
+        fi
+        echo gradle
+    else
+        echo "$GRADLE_DIR/bin/gradle"
+    fi
+}
+gradle() {
+    if [[ -z "$GRADLE_BIN" ]]; then
+        GRADLE_BIN=$(find_gradle) || return 1
+    fi
+    command "$GRADLE_BIN" "$@"
+}
+
 # Use these defaults if (and only if) no environment variables
 GHIDRA_INSTALL_DIR=${GHIDRA_INSTALL_DIR-$DEFAULT_GHIDRA_INSTALL_DIR}
 GHIDRA_PROJECT=${GHIDRA_PROJECT-$DEFAULT_GHIDRA_PROJECT}

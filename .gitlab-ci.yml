@@ -3,7 +3,7 @@ stages:
 
 default:
   image: docker.grammatech.com/rewriting/gtirb-ghidra-plugin
-  tags: ["kubernetes"]
+  tags: ["shared"]
 
 build-and-test:
   stage: build-and-test

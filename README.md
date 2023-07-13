@@ -49,7 +49,7 @@ The command-line examples in this section are for Ubuntu 20.04 and Ghidra 10.1.2
    ```
 8. Build the plugin with Gradle and extract it to `GHIDRA_INSTALL_DIR/Ghidra/Extensions`. You can use the `install_plugin.sh` script to automate this.
    ```sh
-   ./scripts/install_plugin.sh
+   ./Gtirb/install_plugin.sh
    ```
 
 ## Usage - GUI

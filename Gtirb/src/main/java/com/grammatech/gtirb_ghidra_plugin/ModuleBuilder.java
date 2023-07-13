@@ -8,6 +8,7 @@
 package com.grammatech.gtirb_ghidra_plugin;
 
 import com.grammatech.gtirb.*;
+import com.grammatech.gtirb.CodeBlock.DecodeMode;
 import com.grammatech.gtirb.Module;
 import ghidra.app.util.exporter.ExporterException;
 import ghidra.program.model.address.Address;
@@ -107,7 +108,7 @@ public class ModuleBuilder {
         // address
         ByteBlock newBlock;
         long newSize;
-        long decodeMode = 0;
+        DecodeMode decodeMode = CodeBlock.DecodeMode.Default;
         if (oldBlock != null) {
             // Splitting an old block, keeping its offset but shrinking to fit a
             // new block after it

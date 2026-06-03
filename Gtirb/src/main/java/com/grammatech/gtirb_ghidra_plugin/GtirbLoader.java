@@ -14,9 +14,11 @@
 package com.grammatech.gtirb_ghidra_plugin;
 
 import com.grammatech.gtirb.*;
+import com.grammatech.gtirb.AuxDataSchemas;
 import com.grammatech.gtirb.Edge.EdgeType;
-
+import com.grammatech.gtirb.ElfSymbolInfoTuple;
 import com.grammatech.gtirb.Module;
+import com.grammatech.gtirb.SectionPropertyTuple;
 import ghidra.app.util.MemoryBlockUtils;
 import ghidra.app.util.Option;
 import ghidra.app.util.bin.ByteProvider;
@@ -24,6 +26,7 @@ import ghidra.app.util.bin.format.elf.ElfSectionHeaderConstants;
 import ghidra.app.util.importer.MessageLog;
 import ghidra.app.util.opinion.AbstractLibrarySupportLoader;
 import ghidra.app.util.opinion.ElfLoader;
+import ghidra.app.util.opinion.Loader;
 import ghidra.app.util.opinion.LoadSpec;
 import ghidra.app.util.opinion.QueryOpinionService;
 import ghidra.app.util.opinion.QueryResult;
@@ -34,7 +37,6 @@ import ghidra.program.model.address.Address;
 import ghidra.program.model.address.AddressOverflowException;
 import ghidra.program.model.address.AddressSet;
 import ghidra.program.model.address.AddressSpace;
-import ghidra.program.model.data.DataTypeConflictException;
 import ghidra.program.model.data.DataUtilities;
 import ghidra.program.model.data.Undefined;
 import ghidra.program.model.listing.CodeUnit;
@@ -158,13 +160,13 @@ public class GtirbLoader extends AbstractLibrarySupportLoader {
     // correctly process the sections.
     //
     private boolean processElfSectionProperties(
-        Map<UUID, TwoTuple<Long, Long>> elfSectionProperties) {
-        for (Map.Entry<UUID, TwoTuple<Long, Long>> entry :
+        Map<UUID, SectionPropertyTuple> elfSectionProperties) {
+        for (Map.Entry<UUID, SectionPropertyTuple> entry :
              elfSectionProperties.entrySet()) {
             UUID sectionUuid = entry.getKey();
             Section section = (Section)nodeMap.get(sectionUuid);
-            TwoTuple<Long, Long> properties = entry.getValue();
-            Long sectionType = properties.getFirst();
+            SectionPropertyTuple properties = entry.getValue();
+            Long sectionType = properties.getType();
             // Long sectionFlags = properties.getSecond();
             // section.setElfSectionType(sectionType.longValue());
             // section.setElfSectionFlags(sectionFlags.longValue());
@@ -208,7 +210,7 @@ public class GtirbLoader extends AbstractLibrarySupportLoader {
         // function entry block.
         //
         for (Symbol symbol : symbols) {
-            referentUuid = symbol.getReferentUuid();
+            referentUuid = symbol.getReferentUuid().orElse(com.grammatech.gtirb.Util.NIL_UUID);
             if (!referentUuid.equals(com.grammatech.gtirb.Util.NIL_UUID)) {
                 Node referent = nodeMap.get(referentUuid);
                 if (referent == null) {
@@ -233,8 +235,8 @@ public class GtirbLoader extends AbstractLibrarySupportLoader {
     private boolean initializeFunctionMap(Module m) {
         this.functionMap = new HashMap<String, GtirbFunction>();
         String functionName;
-        Map<UUID, Set<UUID>> functionEntries = m.getFunctionEntries().getMap();
-        Map<UUID, Set<UUID>> functionBlocks = m.getFunctionBlocks().getMap();
+        Map<UUID, Set<UUID>> functionEntries = m.getAuxData(AuxDataSchemas.functionEntries).orElse(Collections.emptyMap());
+        Map<UUID, Set<UUID>> functionBlocks = m.getAuxData(AuxDataSchemas.functionBlocks).orElse(Collections.emptyMap());
 
         //
         // Process the Function Entries AuxData, which is a list of UUIDs of
@@ -498,7 +500,7 @@ public class GtirbLoader extends AbstractLibrarySupportLoader {
     }
 
     private long getSymbolSize(Symbol symbol) {
-        UUID referentUuid = symbol.getReferentUuid();
+        UUID referentUuid = symbol.getReferentUuid().orElse(com.grammatech.gtirb.Util.NIL_UUID);
         if (referentUuid.equals(com.grammatech.gtirb.Util.NIL_UUID)) {
             return 0;
         }
@@ -529,8 +531,6 @@ public class GtirbLoader extends AbstractLibrarySupportLoader {
         } catch (CodeUnitInsertionException e) {
             Msg.info(this,
                      "possible data markup conflict at " + symbolFullAddress);
-        } catch (DataTypeConflictException e) {
-            throw new AssertException("unexpected", e);
         }
         return (addCodeSymbol(symbol, symbolAddress, namespace));
     }
@@ -708,7 +708,7 @@ public class GtirbLoader extends AbstractLibrarySupportLoader {
 
         // Collect all external symbols to a list
         for (Symbol symbol : symbols) {
-            UUID referentUuid = symbol.getReferentUuid();
+            UUID referentUuid = symbol.getReferentUuid().orElse(com.grammatech.gtirb.Util.NIL_UUID);
             if (referentUuid.equals(com.grammatech.gtirb.Util.NIL_UUID)) {
                 // Symbols that have no referent
                 externalSymbols.add(new DynamicSymbol(symbol.getName()));
@@ -932,19 +932,17 @@ public class GtirbLoader extends AbstractLibrarySupportLoader {
 
         // Prepare a set of all symbols that refer to file names
         HashSet<String> fileSymbols = new HashSet<>();
-        // Map<UUID, SymbolInfo> elfSymbolInfo =
-        // module.getAuxData().getElfSymbolInfo();
-        Map<UUID, FiveTuple<Long, String, String, String, Long>> elfSymbolInfo =
-            module.getElfSymbolInfo();
+        Map<UUID, ElfSymbolInfoTuple> elfSymbolInfo =
+            module.getAuxData(AuxDataSchemas.elfSymbolInfo).orElse(null);
         if (elfSymbolInfo != null) {
-            for (Map.Entry<UUID, FiveTuple<Long, String, String, String, Long>>
+            for (Map.Entry<UUID, ElfSymbolInfoTuple>
                      entry : elfSymbolInfo.entrySet()) {
                 UUID symbolUuid = entry.getKey();
                 Node symbolNode = nodeMap.get(symbolUuid);
                 if (!(symbolNode instanceof Symbol))
                     continue;
                 Symbol aSymbol = (Symbol)symbolNode;
-                String symbolType = entry.getValue().getSecond();
+                String symbolType = entry.getValue().getType();
                 if (symbolType.equals("FILE")) {
                     fileSymbols.add(aSymbol.getName());
                 }
@@ -989,7 +987,7 @@ public class GtirbLoader extends AbstractLibrarySupportLoader {
             //
             // If no payload, search the fake externals list for an assigned
             // address
-            UUID referentUuid = symbol.getReferentUuid();
+            UUID referentUuid = symbol.getReferentUuid().orElse(com.grammatech.gtirb.Util.NIL_UUID);
             if (false) {
                 if (referentUuid.equals(com.grammatech.gtirb.Util.NIL_UUID)) {
                     for (DynamicSymbol dynamicSymbol : this.dynamicSymbols) {
@@ -1086,7 +1084,7 @@ public class GtirbLoader extends AbstractLibrarySupportLoader {
         } else if (uuidNode instanceof ProxyBlock) {
             Symbol symbol = GtirbUtil.getSymbolByReferent(module, blockUuid);
             if (symbol != null) {
-                return symbol.getValue();
+                return symbol.getValue().orElse(0L);
             }
         }
         return 0;
@@ -1189,10 +1187,12 @@ public class GtirbLoader extends AbstractLibrarySupportLoader {
     }
 
     @Override
-    protected void load(ByteProvider provider, LoadSpec loadSpec,
-                        List<Option> options, Program program,
-                        TaskMonitor monitor, MessageLog log)
+    protected void load(Program program, Loader.ImporterSettings settings)
         throws CancelledException, IOException {
+        ByteProvider provider = settings.provider();
+        List<Option> options = settings.options();
+        MessageLog log = settings.log();
+        TaskMonitor monitor = settings.monitor();
 
         monitor.setMessage("Loading GTIRB ...");
         program.setExecutableFormat(GtirbLoader.GTIRB_NAME);
@@ -1231,7 +1231,7 @@ public class GtirbLoader extends AbstractLibrarySupportLoader {
         // a ghidra address.
         //
         String elfFileType = "EXEC";
-        List<String> binaryTypeList = module.getBinaryType();
+        List<String> binaryTypeList = module.getAuxData(AuxDataSchemas.binaryType).orElse(null);
         if (binaryTypeList != null) {
             // This is generally a list with only one item. If there are
             // multiple the last one is used.
@@ -1260,8 +1260,8 @@ public class GtirbLoader extends AbstractLibrarySupportLoader {
         //   external references
         monitor.setMessage("Processing program sections...");
         // UUID => ElfSectionType,ElfSectionFlags
-        Map<UUID, TwoTuple<Long, Long>> elfSectionProperties =
-            module.getElfSectionProperties();
+        Map<UUID, SectionPropertyTuple> elfSectionProperties =
+            module.getAuxData(AuxDataSchemas.sectionProperties).orElse(null);
         if (elfSectionProperties != null) {
             processElfSectionProperties(elfSectionProperties);
         }
@@ -1348,8 +1348,9 @@ public class GtirbLoader extends AbstractLibrarySupportLoader {
         // Further TODOs:
         //     Import auxdata comments
         monitor.setMessage("Processing program comments...");
-        Comments comments = module.getComments();
-        for (Map.Entry<Offset, String> entry : comments.getMap().entrySet()) {
+        Map<Offset, String> commentsMap = module.getAuxData(AuxDataSchemas.comments).orElse(null);
+        if (commentsMap != null)
+        for (Map.Entry<Offset, String> entry : commentsMap.entrySet()) {
             Offset offset = entry.getKey();
             // Offset has a UUID and a displacement
             // In the case of a comment, the UUID should be the code/data
@@ -1419,9 +1420,11 @@ public class GtirbLoader extends AbstractLibrarySupportLoader {
     @Override
     public List<Option>
     getDefaultOptions(ByteProvider provider, LoadSpec loadSpec,
-                      DomainObject domainObject, boolean isLoadIntoProgram) {
+                      DomainObject domainObject, boolean isLoadIntoProgram,
+                      boolean loadIntoCurrentProgram) {
         List<Option> list = super.getDefaultOptions(
-            provider, loadSpec, domainObject, isLoadIntoProgram);
+            provider, loadSpec, domainObject, isLoadIntoProgram,
+            loadIntoCurrentProgram);
 
         try {
             GtirbLoaderOptionsFactory.addOptions(list, provider, loadSpec);

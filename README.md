@@ -20,23 +20,23 @@ A video demonstration of installing and using this plugin is available at
 
 See the Installation section above to use the provided builds. To build from source instead:
 
-The command-line examples in this section are for Ubuntu 20.04 and Ghidra 10.1.2, assuming you want to install Ghidra and Gradle to `~/.local`. Adjust them as appropriate to fit your system and Ghidra version.
+The command-line examples in this section are for Ubuntu 22.04+ and Ghidra 12.1, assuming you want to install Ghidra and Gradle to `~/.local`. Adjust them as appropriate to fit your system and Ghidra version.
 
 1. Download the latest release of Ghidra [from Github](https://github.com/NationalSecurityAgency/ghidra/releases).
-2. Download Gradle 7 from https://gradle.org/releases/
-3. Install OpenJDK 11
+2. Download Gradle 8.5 from https://gradle.org/releases/
+3. Install OpenJDK 21
    ```sh
-   sudo apt-get install openjdk-11-jdk
+   sudo apt-get install openjdk-21-jdk
    ```
 4. Extract Ghidra and Gradle somewhere convenient
    ```sh
-   unzip -d ~/.local ~/Downloads/ghidra_10.1.2_PUBLIC_20220125.zip
-   unzip -d ~/.local ~/Downloads/gradle-7.3.3-bin.zip
+   unzip -d ~/.local ~/Downloads/ghidra_12.1_PUBLIC_20260513.zip
+   unzip -d gtirb-ghidra-plugin/ ~/Downloads/gradle-8.5-bin.zip
    ```
 5. Add your Ghidra install path to a Gradle properties file
    ```sh
    mkdir -p ~/.gradle
-   echo "GHIDRA_INSTALL_DIR=$HOME/.local/ghidra_10.1.2_PUBLIC" >> ~/.gradle/gradle.properties
+   echo "GHIDRA_INSTALL_DIR=$HOME/.local/ghidra_12.1_PUBLIC" >> ~/.gradle/gradle.properties
    ```
 6. Download or clone the gtirb-ghidra-plugin source.
    ```sh

@@ -17,11 +17,11 @@ plugins {
     id 'java-library'
 }
 repositories {
-    jcenter()
+    mavenCentral()
 }
 dependencies {
-    // Expected libraries: protobuf-java-3.*.jar, gtirb_api-1.*.jar
-    implementation 'com.google.protobuf:protobuf-java:3.11.1'
+    // Expected libraries: gtirb-2.*.jar
+    implementation 'com.google.protobuf:protobuf-java:4.27.0'
     implementation fileTree(dir: 'lib', include: '*.jar')
 }
 //----------------------START "DO NOT MODIFY" SECTION------------------------------

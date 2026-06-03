@@ -29,7 +29,6 @@ import ghidra.util.task.TaskMonitor;
 
 import java.io.*;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 import java.util.UUID;
 
@@ -65,7 +64,7 @@ public class GtirbExporter extends Exporter {
                 module = moduleBuilder.exportModule(null);
                 CFG cfg = cfgBuilder.exportCFG(null, module);
 
-                ir.setModules(Collections.singletonList(module));
+                ir.addModule(module);
                 ir.setCfg(cfg);
             } catch (ExporterException e) {
                 Msg.error(this, "GTIRB export failed: " + e);
@@ -79,7 +78,7 @@ public class GtirbExporter extends Exporter {
 
                 CFG cfg = cfgBuilder.exportCFG(ir.getCfg(), module);
 
-                ir.setModules(Collections.singletonList(module));
+                // module is modified in-place; just update the CFG
                 ir.setCfg(cfg);
             } catch (ExporterException e) {
                 Msg.error(this, "GTIRB export failed: " + e);
@@ -140,8 +139,7 @@ public class GtirbExporter extends Exporter {
             if (inputStream != null)
                 ir = IR.loadFile(inputStream);
         } else {
-            // Create a copy of the original Gtirb
-            ir = new IR(ir.getProtoIR());
+            // No deep-copy available in GTIRB 2.x; re-use the live IR directly
         }
 
         // Open output file

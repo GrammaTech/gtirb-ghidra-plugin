@@ -8,6 +8,7 @@
 package com.grammatech.gtirb_ghidra_plugin;
 
 import com.grammatech.gtirb.*;
+import com.grammatech.gtirb.AuxDataSchemas;
 import com.grammatech.gtirb.CodeBlock.DecodeMode;
 import com.grammatech.gtirb.Module;
 import ghidra.app.util.exporter.ExporterException;
@@ -23,6 +24,7 @@ import ghidra.program.model.symbol.SymbolType;
 import ghidra.util.Msg;
 
 import java.util.*;
+import java.util.HashSet;
 
 /**
  * Export handling to generate a GTIRB ${@link Module} based on the current
@@ -138,10 +140,9 @@ public class ModuleBuilder {
             newSize = sizeHint;
         }
         if (isExecutable) {
-            newBlock = new CodeBlock(newSize, newBlockOffset, decodeMode,
-                                     byteInterval);
+            newBlock = new CodeBlock(newSize, newBlockOffset, decodeMode);
         } else {
-            newBlock = new DataBlock(newSize, newBlockOffset, byteInterval);
+            newBlock = new DataBlock(newSize, newBlockOffset);
         }
         byteInterval.insertByteBlock(newBlock);
 
@@ -161,7 +162,7 @@ public class ModuleBuilder {
         }
 
         String sectionName = memoryBlock.getName();
-        ArrayList<Section.SectionFlag> sectionFlags = new ArrayList<>();
+        Set<Section.SectionFlag> sectionFlags = new HashSet<>();
         ArrayList<ByteInterval> byteIntervals = new ArrayList<>();
 
         /* Gtirb also specifies a ThreadLocal section flag, but Ghidra doesn't
@@ -179,7 +180,7 @@ public class ModuleBuilder {
         if (memoryBlock.isInitialized())
             sectionFlags.add(Section.SectionFlag.Initialized);
 
-        section = new Section(sectionName, sectionFlags, byteIntervals, module);
+        section = new Section(sectionName, sectionFlags, new ArrayList<>());
 
         byte[] blockBytes = null;
         if (memoryBlock.isInitialized()) {
@@ -200,10 +201,10 @@ public class ModuleBuilder {
         long biAddress = memoryBlock.getStart().getOffset() -
                          program.getImageBase().getOffset();
         ByteInterval byteInterval =
-            new ByteInterval(blockBytes, biAddress, section);
+            new ByteInterval(blockBytes, biAddress);
         byteInterval.setSize(memoryBlock.getSize());
+        section.addByteInterval(byteInterval);
         byteIntervals.add(byteInterval);
-        section.setByteIntervals(byteIntervals);
 
         return section;
     }
@@ -211,7 +212,7 @@ public class ModuleBuilder {
     //
     // exportComments
     //
-    private Comments exportComments(Module module) {
+    private Map<Offset, String> exportComments(Module module) {
         Listing listing = this.program.getListing();
         Memory memory = this.program.getMemory();
         AddressIterator addressIterator;
@@ -243,7 +244,7 @@ public class ModuleBuilder {
                 commentMap.put(new Offset(uuid, offset), commentString);
             }
         }
-        return new Comments(commentMap);
+        return commentMap;
     }
 
     /**
@@ -253,9 +254,9 @@ public class ModuleBuilder {
      * */
     private OptionalLong getSymbolAddress(Symbol symbol) {
         OptionalLong symbolOffset = OptionalLong.empty();
-        UUID referentUuid = symbol.getReferentUuid();
+        UUID referentUuid = symbol.getReferentUuid().orElse(com.grammatech.gtirb.Util.NIL_UUID);
         if (!referentUuid.equals(com.grammatech.gtirb.Util.NIL_UUID)) {
-            Node symbolNode = Node.getByUuid(symbol.getReferentUuid());
+            Node symbolNode = Node.getByUuid(referentUuid);
             // Address here is really offset from image base
             // Only have address if code or data, anything else stays 0.
             if (symbolNode instanceof ByteBlock) {
@@ -416,7 +417,12 @@ public class ModuleBuilder {
             }
             symbolList.add(symbol);
         }
-        module.setSymbols(symbolList);
+        for (Symbol sym : new ArrayList<>(module.getSymbols())) {
+            module.removeSymbol(sym);
+        }
+        for (Symbol sym : symbolList) {
+            module.addSymbol(sym);
+        }
     }
 
     /** Add Ghidra's symbols list to GTIRB. */
@@ -424,7 +430,7 @@ public class ModuleBuilder {
         ArrayList<Symbol> symbols = new ArrayList<>();
         for (ghidra.program.model.symbol.Symbol sym :
              program.getSymbolTable().getAllSymbols(false)) {
-            Symbol gtSym = new Symbol(sym.getName(), module);
+            Symbol gtSym = new Symbol(sym.getName());
 
             UUID refUuid = null;
             if (!sym.isExternal()) {
@@ -436,7 +442,12 @@ public class ModuleBuilder {
                 gtSym.setReferentUuid(refUuid);
             symbols.add(gtSym);
         }
-        module.setSymbols(symbols);
+        for (Symbol sym : new ArrayList<>(module.getSymbols())) {
+            module.removeSymbol(sym);
+        }
+        for (Symbol sym : symbols) {
+            module.addSymbol(sym);
+        }
     }
 
     private CodeBlock getEntryPoint(Module module) {
@@ -531,7 +542,12 @@ public class ModuleBuilder {
                 sectionList.add(exportSection(null, memoryBlock, module));
             }
         }
-        module.setSections(sectionList);
+        for (Section sec : new ArrayList<>(module.getSections())) {
+            module.removeSection(sec);
+        }
+        for (Section sec : sectionList) {
+            module.addSection(sec);
+        }
 
         // Export symbols
         if (isNewModule) {
@@ -544,7 +560,7 @@ public class ModuleBuilder {
         boolean alreadyHasComments =
             module.getAuxDataMap().containsKey("comments");
         if (!alreadyHasComments) {
-            module.setComments(exportComments(module));
+            module.putAuxData(AuxDataSchemas.comments, exportComments(module));
         }
 
         return module;

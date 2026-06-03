@@ -15,7 +15,7 @@ if [[ ! -w /home ]] && [[ ! -w /home/testdir ]]; then
 fi
 
 # Attempt to read GHIDRA_INSTALL_DIR from Gradle properties if we can
-GRADLE_PROPERTIES_LOCAL="$PLUGIN_REPO/Ghidra/gradle.properties"
+GRADLE_PROPERTIES_LOCAL="$PLUGIN_REPO/Gtirb/gradle.properties"
 GRADLE_PROPERTIES_GLOBAL="$HOME/.gradle/gradle.properties"
 
 if [[ -z "$GHIDRA_INSTALL_DIR" ]] && [[ -f "$GRADLE_PROPERTIES_LOCAL" ]]; then
@@ -27,18 +27,18 @@ fi
 
 # Gradle wrapper that attempts to find a good gradle install
 find_gradle() {
-    # Find the most recent gradle 7.x in PLUGIN_REPO or ~/.local
-    GRADLE_DIR=$(ls -1d $PLUGIN_REPO/gradle-7.* 2>/dev/null | tail -n 1)
+    # Find the most recent gradle 8.x in PLUGIN_REPO or ~/.local
+    GRADLE_DIR=$(ls -1d $PLUGIN_REPO/gradle-8.* 2>/dev/null | tail -n 1)
     if [[ -z "$GRADLE_DIR" ]]; then
-        GRADLE_DIR="$(ls -1d $HOME/.local/gradle-7.* 2>/dev/null | tail -n 1)"
+        GRADLE_DIR="$(ls -1d $HOME/.local/gradle-8.* 2>/dev/null | tail -n 1)"
     fi
 
     # If no extracted release was found, check the gradle version in $PATH
     if [[ -z "$GRADLE_DIR" ]]; then
-        if ! command gradle --version 2>/dev/null | grep -Fq "Gradle 7."; then
+        if ! command gradle --version 2>/dev/null | grep -Eq "Gradle 8\."; then
             echo -e "
-Error: Gradle 7 is not installed.
-Please download a Gradle 7 release from https://gradle.org/releases/ and extract it to:
+Error: Gradle 8 is not installed.
+Please download a Gradle 8 release from https://gradle.org/releases/ and extract it to:
   $PLUGIN_REPO/" >&2
             return 1
         fi

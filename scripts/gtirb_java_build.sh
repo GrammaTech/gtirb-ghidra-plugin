@@ -46,92 +46,63 @@ autoconf automake libtool'
 # Matching that, or at least not using a newer version than that, helps avoid
 # issues from having multiple different protobuf versions.
 #----------------------------------------------------------------------------
-PROTO_URL="https://github.com/protocolbuffers/protobuf/releases/download/v3.11.1/protobuf-java-3.11.1.tar.gz"
+# Find protoc: check for pre-downloaded binary in plugin repo, then PATH
+PROTOC_URL="https://github.com/protocolbuffers/protobuf/releases/download/v27.0/protoc-27.0-linux-x86_64.zip"
 
-protoc=protoc
-proto_lib=
-
-if [[ -x protobuf/bin/protoc ]]; then
-    protoc="$PLUGIN_REPO/protobuf/bin/protoc"
-fi
-
-IFS=. read -r -a proto_ver <<< "$($protoc --version)"
-
-if [[ "${proto_ver[0]}" != "libprotoc 3" || "${proto_ver[1]}" -lt 2 ]]; then
-    rm -rf protobuf &&
-    mkdir protobuf &&
-    cd protobuf || exit
-
-    rm -f *.tar.gz *.zip
-    if [[ ! -d protobuf-* || ! -x bin/protoc ]]; then
-        wget "$PROTO_URL" &&
-        tar xf protobuf-*.tar.gz &&
-        rm -f *.tar.gz || exit
-
-        extracted=(*)
-
-        cd "$extracted" &&
-        ./configure --prefix="$PLUGIN_REPO/protobuf" &&
-        make -j8 &&
-        make install &&
-        cd .. &&
-        rm -rf "${extracted[@]}" || exit
+if [[ -x "$PLUGIN_REPO/protoc/bin/protoc" ]]; then
+    protoc="$PLUGIN_REPO/protoc/bin/protoc"
+elif command -v protoc &>/dev/null; then
+    # protobuf-java 4.x requires protoc >= 27; older system protoc generates 3.x-only code
+    PROTOC_MAJOR=$(protoc --version 2>&1 | grep -oP '(?<=libprotoc )\d+')
+    if [[ "${PROTOC_MAJOR:-0}" -ge 27 ]]; then
+        protoc=protoc
+    else
+        echo "System protoc is too old ($(protoc --version)), downloading protoc 27.0..."
+        wget -q "$PROTOC_URL" -O /tmp/protoc.zip &&
+        unzip -q /tmp/protoc.zip -d "$PLUGIN_REPO/protoc" &&
+        rm /tmp/protoc.zip || exit
+        protoc="$PLUGIN_REPO/protoc/bin/protoc"
     fi
-
-    cd ..
-    protoc="$PLUGIN_REPO/protobuf/bin/protoc"
+else
+    echo "Downloading protoc 27.0..."
+    wget -q "$PROTOC_URL" -O /tmp/protoc.zip &&
+    unzip -q /tmp/protoc.zip -d "$PLUGIN_REPO/protoc" &&
+    rm /tmp/protoc.zip || exit
+    protoc="$PLUGIN_REPO/protoc/bin/protoc"
 fi
 
-if [[ "$protoc" != protoc ]]; then
-    proto_lib="$PLUGIN_REPO/protobuf"
-fi
+echo "Using protoc: $protoc ($($protoc --version))"
+
+#----------------------------------------------------------
+# Find the local Gradle 8 binary
+#----------------------------------------------------------
+. "$PLUGIN_REPO/scripts/ghidra-defs.sh"
+GRADLE_BIN=$(find_gradle) || exit
 
 #----------------------------------------------------------
 # Clone and build GTIRB
 #----------------------------------------------------------
 
-cmake_args=(
-    -DGTIRB_CXX_API=OFF -DGTIRB_PY_API=OFF -DGTIRB_CL_API=OFF
-    -DGTIRB_DOCUMENTATION=OFF -DGTIRB_ENABLE_TESTS=OFF)
-
-if [[ "$proto_lib" ]]; then
-    cmake_args+=("-DCMAKE_PREFIX_PATH=$proto_lib")
-fi
-
-. "$PLUGIN_REPO/version.txt"
-
 rm -rf gtirb-src
-git clone https://github.com/GrammaTech/gtirb.git gtirb-src -b $GTIRB_BRANCH || exit
+git clone https://github.com/GrammaTech/gtirb.git gtirb-src || exit
 
 cd gtirb-src &&
 $protoc --java_out=java --proto_path=proto proto/*.proto || exit
 
-if [[ $FORCE_CMAKE ]]; then
-    mkdir build &&
-    cd build &&
-    cmake "${cmake_args[@]}" .. &&
-    make || exit
-    # Install the API JAR but ignore javadoc and sources
-    GTIRB_JAR=()
-    for jarfile in $PWD/java/target/gtirb_api-*.jar; do
-        if [[ $jarfile != *-javadoc.jar && $jarfile != *-sources.jar ]]; then
-            GTIRB_JAR+=("$jarfile")
-        fi
-    done
-else
-    cd java &&
-    gradle build || exit
-    GTIRB_JAR=($PWD/build/libs/*.jar)
-fi
+# Update protobuf-java version to match protoc 27.x
+sed -i "s/protobuf-java:[0-9][^'\"[:space:]]*/protobuf-java:4.27.0/" java/build.gradle
 
-pwd
-if [[ ! -f $GTIRB_JAR ]]; then
+cd java &&
+"$GRADLE_BIN" build -x test || exit
+GTIRB_JAR=($PWD/build/libs/*.jar)
+
+if [[ ! -f ${GTIRB_JAR[0]} ]]; then
     echo "Error: Unable to find the necessary JAR library"
     exit 1
 fi
 
 cd "$PLUGIN_REPO" &&
 rm -f Gtirb/lib/*.jar &&
-install -v "$GTIRB_JAR" Gtirb/lib/ || exit
+install -v "${GTIRB_JAR[@]}" Gtirb/lib/ || exit
 
 echo "Successfully finished building Java libs"

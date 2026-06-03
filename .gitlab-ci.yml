@@ -9,26 +9,13 @@ build-and-test:
   stage: build-and-test
   script:
   - echo "Building plugin..."
-  - apt-get update -y && apt-get install -y pip && pip install ddisasm
-  # Clone GTIRB repo so you can get the Java API
+  - apt-get update -y && apt-get install -y pip wget unzip && pip install ddisasm
+  # Build the GTIRB Java API and plugin using gtirb_java_build.sh
   - cd ${CI_PROJECT_DIR}
-  - git clone https://git.grammatech.com/rewriting/gtirb.git
-  # Run the protocol compiler to generate Java classes from proto files
-  - cd gtirb
-  # Run cmake to generate Java class with version information
-  - mkdir build
-  - cd build
-  - cmake ../ -DGTIRB_CXX_API=OFF -DGTIRB_PY_API=OFF -DGTIRB_CL_API=OFF -DGTIRB_JAVA_API=ON
-  - make
-
-  # Copy in GTIRB Java API and protobuf Java lib
+  - ./scripts/gtirb_java_build.sh
+  # Build the plugin and install in Ghidra
   - cd ${CI_PROJECT_DIR}/Gtirb
-  - cp ${CI_PROJECT_DIR}/gtirb/build/java/target/*.jar lib/
-  # Build the plugin
-  - gradle
-  # Install in Ghidra
-  - rm -rf ${GHIDRA_INSTALL_DIR}/Ghidra/Extensions/Gtirb
-  - unzip -d ${GHIDRA_INSTALL_DIR}/Ghidra/Extensions dist/*.zip
+  - ./install_plugin.sh
   # Run test scripts using plugin in headless mode
   - cd ${CI_PROJECT_DIR}/tests
   - ./test-import hello_x64.elf

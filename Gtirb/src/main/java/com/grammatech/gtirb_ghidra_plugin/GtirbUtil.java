@@ -27,7 +27,7 @@ public class GtirbUtil {
 
     public static Symbol getSymbolByReferent(Module module, UUID referentUuid) {
         for (Symbol symbol : module.getSymbols()) {
-            UUID symReferentUuid = symbol.getReferentUuid();
+            UUID symReferentUuid = symbol.getReferentUuid().orElse(com.grammatech.gtirb.Util.NIL_UUID);
             if (referentUuid.equals(symReferentUuid)) {
                 return symbol;
             }
